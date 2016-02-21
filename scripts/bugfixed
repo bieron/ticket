@@ -1,0 +1,3 @@
+#!/bin/bash
+
+ticket $2 comment="*Bug $1* fixed"

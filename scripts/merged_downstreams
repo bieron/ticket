@@ -1,0 +1,56 @@
+#!/bin/bash
+
+if [ -z $1 ]; then
+    >&2 echo usage: merged_downstreams REQUEST TARGET
+    exit 1
+fi
+
+if [ $1 = '-h' ] || [ $1 = '--help' ]; then
+    echo 'Looks for any rev ancestor of REQUEST
+that is already an ancestor of either one of downstream development cycle branches (devel or testing).
+Prints to STDOUT if one is founded.
+
+  usage: merged_downstreams REQUEST TARGET
+example: merged_downstreams origin/I_might_be_tainted_with_devel  master
+
+REQUEST and TARGET can be any valid git refs.
+TARGET defaults to HEAD.'
+    exit
+fi
+
+#XXX This scripts operates on state of local branches, instead of those of origin
+#TODO pros and cons
+
+REV_TO=$1
+REV_FROM=${2:-HEAD}
+
+# Quick but leaky shortcut
+[ "$REV_FROM" = devel ] && exit
+
+GIT_RANGE='git log --no-merges --pretty=format:%h'
+DIR=`mktemp -d`
+
+# List all requested revs not contained in TARGET
+# Sort is required by comm
+$GIT_RANGE $REV_FROM..$REV_TO |sort > $DIR/request
+
+function revs_common_with {
+    # List all commits in given downstream but not in TARGET
+    $GIT_RANGE $REV_FROM..$1 |sort > $DIR/downstream
+    # Find first common rev
+    REV=`comm -12 $DIR/request $DIR/downstream |head -n1`
+    if [ -n "$REV" ]; then
+        echo $REV in $1 but not in $REV_FROM
+        rm -r $DIR
+        exit # one common rev is enough
+    fi
+}
+
+revs_common_with devel
+
+# In case local testing was not yet merged to devel
+# Also, yes, perhaps testing should be checked before devel
+# but for every 2 weeks out of 3 testing branch is behind master, and checking it first is pointless
+[ "$REV_FROM" = master ] && revs_common_with testing
+
+rm -r $DIR

@@ -1,0 +1,12 @@
+requires qw/ Class::Load         0.19     /;
+requires qw/ Config::Simple      4.58     /;
+requires qw/ Data::Dump          1.21     /;
+requires qw/ Date::Calc          6.3      /;
+requires qw/ Email::Stuffer      0.012    /;
+requires qw/ IPC::System::Simple 1.21     /;
+requires qw/ JSON::XS            2.32     /;
+requires qw/ List::MoreUtils     0.33     /;
+requires qw/ Role::Tiny::With    1.003003 /;
+requires qw/ Term::ReadKey       2.30     /;
+requires qw/ Text::Unidecode     1.23     /;
+requires qw/ YAML::Syck          1.29     /;

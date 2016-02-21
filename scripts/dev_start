@@ -1,0 +1,80 @@
+#!/usr/bin/perl
+use strict; use warnings;#{{{
+use Getopt::Long qw/:config bundling/;
+use FindBin;
+use lib "$FindBin::RealBin/../lib";
+use Ticket qw/cfg err/;
+use API::Git;#}}}
+
+my $project_key = cfg 'project_key';
+local $" = ',';
+# process input
+my %O;
+my $rtfm = not GetOptions(
+    'h|help'       => \$O{help},
+
+    'u|upstream:s' => \$O{upstream},
+    'w|workflow:s' => \$O{workflow},
+);
+my @keys = map { m/(\d+)/ ? $project_key.'-'.$1 : () } @ARGV;
+
+if ($rtfm || $O{help} || ! @keys) {
+    print <<'RTFM';
+
+SYNOPSIS
+
+   dev_start TICKETS...
+   dev_start TICKETS... -w [start,review,qa]
+   dev_start TICKETS... -u [origin/devel]
+
+DESCRIPTION
+
+Assigns $USER to the given TICKETS and sets them "In Progress" or traverses given $WORKFLOW path
+Puts a branch into description and checkouts to it.
+For a single TICKET, branch is built from issue type and summary, type/KEY-1_issue_summary_here
+For multiple TICKETS given, the branch is fixpack/TICKET-1_TICKET-2_TICKET-3
+
+OPTIONS
+    
+-w, --workflow [WORKFLOW]
+    Comma-separated workflow actions to be performed on issue, e.g. 'start,review,qa'. 
+    Actions are matched case-insensitively, so 'qa' will match to 'In QA'. Defaults to 'start'
+
+-u, --upstream [UPSTREAM]
+    Defines the start point for the new feature branch. Defaults to 'HEAD'
+
+RTFM
+    exit
+}
+
+my $fields_to_set = ['assignee=@', 'status=' . ($O{workflow} // 'start')];
+my $branch;
+
+if ($#keys == 0) {
+    $branch = Ticket::assert_branch($keys[0], 1);
+    eval {
+        Ticket::manipulate_ticket($keys[0], $fields_to_set);
+    };
+} 
+else {
+    my @issues = Ticket::tracker->search(
+        query => "key IN (@keys)",
+        fields => [qw/key description/],
+    );
+
+    my @keys_with_branches = map {$_->{key}} grep {Ticket::has_branch($_)} @issues;
+    if (@keys_with_branches) {
+        err "Following tickets already have branches in theirs descriptions: @keys_with_branches. Cannot continue"; 
+    }
+
+    $branch = 'fixpack/' . join '_', @keys;
+    for (@keys) {
+        Ticket::assert_branch($_, 1, $branch);
+        eval {
+            # changing status can fail, no problem
+            Ticket::manipulate_ticket($_, $fields_to_set);
+        };
+    }
+}
+
+API::Git::checkout_to_branch($branch, $O{upstream});

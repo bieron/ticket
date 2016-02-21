@@ -1,0 +1,27 @@
+#!/bin/bash
+
+echo Creating ~/.ticket directory for config and cache
+[ -d ~/.ticket ] || mkdir ~/.ticket -m 700
+ERR=$?
+[ 0 != $ERR ] && exit $ERR
+
+DIR=`dirname $0`
+cd $DIR
+
+cp config.example ~/.ticket/config
+
+echo Installing perl dependencies
+cpanm --installdeps .
+ERR=$?
+[ 0 != $ERR ] && exit $ERR
+
+echo
+echo Checking git and curl.
+which curl >/dev/null || exit $!
+which git  >/dev/null || exit $!
+echo Done.
+
+echo
+echo 'Add following line to ~/.bashrc or ~/.bash_login or you know best:'
+echo
+echo 'export PATH=$PATH:'$DIR/scripts

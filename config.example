@@ -1,0 +1,8 @@
+[common]
+    project_key    = KEY
+    tracker_host   = https://jira.EXAMPLE.com/
+    ci_tool_host   = https://bamboo.EXAMPLE.com/
+    tracker_class  = IssueTracker::Jira
+    verbose        = 1
+    user           = USER      ; if not provided uses shell variable $USER
+    pass           = PLAINTEXT ; if not provided asks for pass on request and saves session in cookie

@@ -1,0 +1,45 @@
+#!/usr/bin/perl
+use strict; use warnings;#{{{
+use Getopt::Long;
+use FindBin;
+use List::MoreUtils qw/none/;
+use lib "$FindBin::RealBin/../lib";
+use Ticket 'err';#}}}
+
+my %O;
+my $rtfm = not GetOptions(
+    'create'        => \$O{create},
+    'archive'       => \$O{archive},
+    'release:s'     => \$O{release},
+    'description=s' => \$O{description},
+);
+my ($tag) = @ARGV;
+
+err "No tag/fixVersion provided." unless $tag;
+if (none {defined} values %O) {
+    err "Provide at least one option of following:\n" .
+        join ' ', map {"--$_"} keys %O;
+}
+
+my $id = Ticket::tracker->assert_version($tag);
+
+my %params;
+if (defined $O{archive}) {
+    $params{archived} = \1;
+}
+
+if (defined $O{release}) {
+    $params{released} = \1;
+    if (length $O{release}) {
+        $params{releaseDate} = $O{release};
+    } else {
+        my ($y, $m, $d) = ( localtime(time) )[5,4,3];
+        $params{releaseDate} = join '-', (1900+$y, $m+1, $d);
+    }
+}
+
+if (defined $O{description}) {
+    $params{description} = $O{description};
+}
+
+API::Atlassian::modify_version_by_id($id, %params);

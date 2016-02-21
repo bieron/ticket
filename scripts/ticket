@@ -1,0 +1,195 @@
+#!/usr/bin/perl
+use strict; use warnings;#{{{
+use Getopt::Long qw/:config bundling/;
+use List::MoreUtils qw/any none/;
+use Pod::Usage;
+use 5.010;
+use FindBin;
+use lib "$FindBin::RealBin/../lib";
+use Ticket qw/cfg err ticket_out/;
+use API::Git;#}}}
+
+#TODO move search function to another script ?
+if (@ARGV and $ARGV[0] eq 'search') {#{{{
+    my $query = join ' ', splice @ARGV, 1;
+    err 'No query provided.' unless length $query;
+    for (Ticket::tracker->search(query => $query, fields => [qw/key summary/])) {
+        say "$_->{key}\t$_->{summary}";
+    }
+    exit;
+}#}}}
+
+my (%O, @keys); #{{{ handle input
+my $rtfm = not GetOptions(
+    'h|help+'       => \$O{help},
+
+    'b|get-branch'  => \$O{get_branch},
+    'c|checkout'    => \$O{checkout},
+    's|set-branch'  => \$O{set_branch},
+    'u|upstream:s'  => \$O{upstream},
+
+    'k|print-key'   => \$O{print_ticket},
+);
+
+my ($ticket_pattern, $project_key) = cfg qw/ticket_pattern project_key/;
+for (@ARGV) {
+    #XXX any string containing a valid ticket will have that ticket extracted and cast away
+    #as a consequence, you cannot update fields with values matching ticket pattern
+    #like, say, summary="Fix defect exposed by KEY-123"
+    #because ticket will instead try to operate on KEY-123 issue
+    if (/$ticket_pattern/) {
+        push @keys, $1;
+    } elsif (/^\d+$/) {
+        #let user skip project name
+        push @keys, $project_key .'-'. $_;
+    } else {
+        #treat argument as field and let inner code break if invalid
+        push @{ $O{field} }, $_;
+    }
+}
+if ($rtfm || none {defined} values %O) {
+    $O{help} = 1;
+}
+if ($O{help}) {
+    pod2usage({ -verbose => $O{help}-1, -exitval => 0 });
+}
+$O{checkout}   = 1 if defined $O{upstream};
+$O{set_branch} = 1 if defined $O{custom_branch};
+#}}}
+
+@keys = Ticket::get_issuekeys unless @keys;
+
+if ($O{print_ticket}) {
+    local $, = ' ';
+    say @keys;
+    exit;
+}
+
+for my $key (@keys) { #{{{ process tickets
+    if (any {defined} @O{qw/checkout get_branch set_branch/}) {
+        my $branch = Ticket::assert_branch($key, $O{set_branch});
+
+        if ($O{checkout}) {
+            API::Git::checkout_to_branch($branch, $O{upstream});
+        }
+        if ($O{get_branch}) {
+            say $branch;
+        }
+    }
+
+    if ($O{field}) {
+        if (my $issue = Ticket::manipulate_ticket($key, $O{field})) {
+            ticket_out $issue, @{$O{field}};
+        }
+    }
+}#}}}
+__END__
+=pod
+
+=head1 NAME
+
+ ticket - shell interface to Jira issues.
+
+=head1 SYNOPSIS
+
+ ticket -h [-h [-h]]
+ ticket -k
+ ticket TICKET [TICKET...] field1=value field2+add_value field3-remove_value
+ ticket -cs TICKET
+ ticket -su origin/master TICKET
+ ticket search JQL_QUERY
+
+=head1 DESCRIPTION
+
+ With TICKET[s], performs operations on or related to issues.
+ If no TICKET is provided, looks for it in current branch name.
+ If it's not found there, looks for it in last non-merge commit message.
+ If it's not found there, exits with error.
+
+ With "search" searches for issues in Jira with JQL_QUERY.
+ Results are displayed by key and summary, one per line.
+
+ Options --checkout, --set-branch (without parameters) and --print-branch
+ build the branch name by concatenating issue type, key and summary,
+ e.g. bugfix/KEY-1234_Issue_summary
+
+ Short version options can be glued together, e.g. -csf name=value
+
+ When connecting to Jira, uses credentials stored in ~/.jirarc
+
+=head1 OPTIONS
+
+ -h, --help
+    Displays this text. Ignores other options.
+
+ -b, --get-branch
+    Prints task branch fetched from issue.
+
+ -c, --checkout
+    Checkouts to the built branch, creating it if it doesn't exist.
+    If it was created, it stems from HEAD.
+
+ -k, --print-key
+    Prints keys found in branch or last commit. Or prints given TICKETs, for coherence sake.
+
+ -s, --set-branch
+    Prepends issue description with built branch but only if there was none.
+    Doesn't change description if a branch is already included in issue description.
+    CAUTION: Might not recognize some branch patterns.
+
+ -u, --upstream START_POINT
+    Implies --checkout. Makes the newly created (by --checkout) branch stem from START_POINT.
+
+=head1 FIELDS
+
+ field1=value1 [field2=value2 ...]
+    Sets issue's field to value.
+
+ field1+value1 field2-value
+    Adds value1 to field1 and removes value2 from field2.
+    These fields must be list fields, like "labels" or "group".
+
+ field1 [field2 ...]
+    Prints fields' values.
+
+=head2 Fields that are handled in a special manner:
+
+    work=PERIOD@DATE
+        Logs PERIOD of worktime on DATE.
+
+    assignee=@
+        Assigns to current user.
+
+    comment=COMMENT
+        Adds a comment.
+
+    status=ACTION1,ACTION2...
+        Sequentially performs actions on the issue that match to given ACTIONx strings.
+        For example "verifi,work,review,qa" goes from "In Verification" to "In QA".
+        Actions have to be available for issue's current status.
+
+=head1 EXAMPLES
+
+ ticket KEY-1234 -cs
+    Checkout to the branch built from KEY and put it in the issue description.
+
+ ticket assignee=username status=start
+    Assign and start work on issue. Ticket is determined by branch name or last commit message.
+
+ ticket issuelinks,subtasks
+    Prints said issue fields to standard output.
+
+ ticket status=imple fixVersions=v1.23.4
+    Close (with resolution 'Implemented') and set fix version. Ticket is determined as above.
+
+ ticket KEY-1234 work=2h@2001-04-01T10:09
+    Log two hours worth of work on specific date.
+
+ ticket -b
+    Prints a branch build with issue's summary and issue type.
+
+=head1 AUTHOR
+
+ jb5195, feedback welcomed
+
+=cut
