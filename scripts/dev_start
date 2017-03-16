@@ -1,8 +1,9 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 use strict; use warnings;#{{{
-use Getopt::Long qw/:config bundling/;
 use FindBin;
-use lib "$FindBin::RealBin/../lib";
+use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
+use Getopt::Long qw/:config bundling/;
+use IPC::System::Simple qw/system/;
 use Ticket qw/cfg err/;
 use API::Git;#}}}
 
@@ -13,10 +14,11 @@ my %O;
 my $rtfm = not GetOptions(
     'h|help'       => \$O{help},
 
-    'u|upstream:s' => \$O{upstream},
+    'u|upstream=s' => \$O{upstream},
     'w|workflow:s' => \$O{workflow},
+    'p|push'       => \$O{push},
 );
-my @keys = map { m/(\d+)/ ? $project_key.'-'.$1 : () } @ARGV;
+my @keys = map { m/(\w+-\d+)/ ? $1 : (m/(\d+)/ ? $project_key.'-'.$1 : ()) } @ARGV;
 
 if ($rtfm || $O{help} || ! @keys) {
     print <<'RTFM';
@@ -35,13 +37,16 @@ For a single TICKET, branch is built from issue type and summary, type/KEY-1_iss
 For multiple TICKETS given, the branch is fixpack/TICKET-1_TICKET-2_TICKET-3
 
 OPTIONS
-    
+
 -w, --workflow [WORKFLOW]
-    Comma-separated workflow actions to be performed on issue, e.g. 'start,review,qa'. 
+    Comma-separated workflow actions to be performed on issue, e.g. 'start,review,qa'.
     Actions are matched case-insensitively, so 'qa' will match to 'In QA'. Defaults to 'start'
 
--u, --upstream [UPSTREAM]
+-u, --upstream [BRANCH]
     Defines the start point for the new feature branch. Defaults to 'HEAD'
+
+-p, --push
+    Push newly created branch to origin
 
 RTFM
     exit
@@ -55,7 +60,7 @@ if ($#keys == 0) {
     eval {
         Ticket::manipulate_ticket($keys[0], $fields_to_set);
     };
-} 
+}
 else {
     my @issues = Ticket::tracker->search(
         query => "key IN (@keys)",
@@ -64,7 +69,7 @@ else {
 
     my @keys_with_branches = map {$_->{key}} grep {Ticket::has_branch($_)} @issues;
     if (@keys_with_branches) {
-        err "Following tickets already have branches in theirs descriptions: @keys_with_branches. Cannot continue"; 
+        err "Following tickets already have branches in theirs descriptions: @keys_with_branches. Cannot continue";
     }
 
     $branch = 'fixpack/' . join '_', @keys;
@@ -77,4 +82,8 @@ else {
     }
 }
 
-API::Git::checkout_to_branch($branch, $O{upstream});
+API::Git::checkout_branch_assert($branch, $O{upstream});
+
+if ($O{push}) {
+    system(qw/git push --set-upstream/, cfg('remote'), $branch);
+}

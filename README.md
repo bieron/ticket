@@ -7,7 +7,7 @@ as well as tools to automate necessary yet repetetive development tasks,
 such as:
 - setting a branch in an issue and git checkouting it (scripts/dev_start)
 - updating and printing issue's fields (scripts/ticket)
-- getting info on bamboo plans running for given revision
+- displaying Bamboo plans' progress for a commit (scripts/bamboo)
 
 and more.
 

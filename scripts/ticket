@@ -1,23 +1,12 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 use strict; use warnings;#{{{
+use FindBin;
+use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
 use Getopt::Long qw/:config bundling/;
 use List::MoreUtils qw/any none/;
-use Pod::Usage;
 use 5.010;
-use FindBin;
-use lib "$FindBin::RealBin/../lib";
-use Ticket qw/cfg err ticket_out/;
+use Ticket qw/cfg ticket_out/;
 use API::Git;#}}}
-
-#TODO move search function to another script ?
-if (@ARGV and $ARGV[0] eq 'search') {#{{{
-    my $query = join ' ', splice @ARGV, 1;
-    err 'No query provided.' unless length $query;
-    for (Ticket::tracker->search(query => $query, fields => [qw/key summary/])) {
-        say "$_->{key}\t$_->{summary}";
-    }
-    exit;
-}#}}}
 
 my (%O, @keys); #{{{ handle input
 my $rtfm = not GetOptions(
@@ -33,12 +22,8 @@ my $rtfm = not GetOptions(
 
 my ($ticket_pattern, $project_key) = cfg qw/ticket_pattern project_key/;
 for (@ARGV) {
-    #XXX any string containing a valid ticket will have that ticket extracted and cast away
-    #as a consequence, you cannot update fields with values matching ticket pattern
-    #like, say, summary="Fix defect exposed by KEY-123"
-    #because ticket will instead try to operate on KEY-123 issue
-    if (/$ticket_pattern/) {
-        push @keys, $1;
+    if (/^$ticket_pattern$/) {
+        push @keys, $_;
     } elsif (/^\d+$/) {
         #let user skip project name
         push @keys, $project_key .'-'. $_;
@@ -51,10 +36,10 @@ if ($rtfm || none {defined} values %O) {
     $O{help} = 1;
 }
 if ($O{help}) {
-    pod2usage({ -verbose => $O{help}-1, -exitval => 0 });
+    require Pod::Usage;
+    Pod::Usage::pod2usage({-verbose => $O{help}-1, -exitval => $rtfm});
 }
-$O{checkout}   = 1 if defined $O{upstream};
-$O{set_branch} = 1 if defined $O{custom_branch};
+$O{checkout} = 1 if defined $O{upstream};
 #}}}
 
 @keys = Ticket::get_issuekeys unless @keys;
@@ -70,7 +55,7 @@ for my $key (@keys) { #{{{ process tickets
         my $branch = Ticket::assert_branch($key, $O{set_branch});
 
         if ($O{checkout}) {
-            API::Git::checkout_to_branch($branch, $O{upstream});
+            API::Git::checkout_branch_assert($branch, $O{upstream});
         }
         if ($O{get_branch}) {
             say $branch;
@@ -97,7 +82,6 @@ __END__
  ticket TICKET [TICKET...] field1=value field2+add_value field3-remove_value
  ticket -cs TICKET
  ticket -su origin/master TICKET
- ticket search JQL_QUERY
 
 =head1 DESCRIPTION
 
@@ -106,16 +90,13 @@ __END__
  If it's not found there, looks for it in last non-merge commit message.
  If it's not found there, exits with error.
 
- With "search" searches for issues in Jira with JQL_QUERY.
- Results are displayed by key and summary, one per line.
-
  Options --checkout, --set-branch (without parameters) and --print-branch
  build the branch name by concatenating issue type, key and summary,
  e.g. bugfix/KEY-1234_Issue_summary
 
  Short version options can be glued together, e.g. -csf name=value
 
- When connecting to Jira, uses credentials stored in ~/.jirarc
+ When connecting to Jira, uses credentials stored in ~/.ticket/config
 
 =head1 OPTIONS
 
@@ -190,6 +171,6 @@ __END__
 
 =head1 AUTHOR
 
- jb5195, feedback welcomed
+ Jan Bieroń, bieron@github.com
 
 =cut

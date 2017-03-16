@@ -5,7 +5,7 @@ if [ -z $1 ]; then
     exit 1
 fi
 
-if [ $1 = '-h' ] || [ $1 = '--help' ]; then
+if [ $1 = '-h' -o $1 = '--help' ]; then
     echo 'Looks for any rev ancestor of REQUEST
 that is already an ancestor of either one of downstream development cycle branches (devel or testing).
 Prints to STDOUT if one is founded.
@@ -18,14 +18,13 @@ TARGET defaults to HEAD.'
     exit
 fi
 
-#XXX This scripts operates on state of local branches, instead of those of origin
-#TODO pros and cons
+# This script operates on state of either remote or local branches
 
 REV_TO=$1
 REV_FROM=${2:-HEAD}
 
 # Quick but leaky shortcut
-[ "$REV_FROM" = devel ] && exit
+[ $REV_FROM = devel -o $REV_FROM = 'origin/devel' ] && exit
 
 GIT_RANGE='git log --no-merges --pretty=format:%h'
 DIR=`mktemp -d`
@@ -51,6 +50,10 @@ revs_common_with devel
 # In case local testing was not yet merged to devel
 # Also, yes, perhaps testing should be checked before devel
 # but for every 2 weeks out of 3 testing branch is behind master, and checking it first is pointless
-[ "$REV_FROM" = master ] && revs_common_with testing
+if [ $REV_FROM = master ]; then
+    revs_common_with testing
+elif [ $REV_FROM = 'origin/master' ]; then
+    revs_common_with origin/testing
+fi
 
 rm -r $DIR

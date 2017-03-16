@@ -1,0 +1,49 @@
+#!/usr/bin/env perl
+use strict; use warnings; #{{{
+use FindBin;
+use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
+use Getopt::Long;
+use Term::ANSIColor;
+use feature 'say';
+use Ticket qw/cfg/;
+use API::Git;
+use API::Atlassian qw/get_rev_plans_pretty/; #}}}
+
+my %O;
+my $rtfm = not GetOptions(#{{{
+    'h|help' => \$O{help},
+);
+if ($rtfm || $O{help}) {
+    print <<'RTFM';
+    bamboo - show all plans started for given revision
+
+bamboo COMMITTISH
+   show plans started for COMMITTISH (default HEAD)
+
+RTFM
+    exit $rtfm;
+}#}}}
+
+# if no ARGV - get rev from HEAD
+my $rev = API::Git::get_rev($ARGV[0] // 'HEAD');
+my $short_rev = substr $rev, 0, 7;
+my %plans = %{ get_rev_plans_pretty($rev, 'verbose') };
+
+say "plans for $short_rev";
+my $bamboo_url = cfg('ci_tool_host') .'browse/';
+my @colors = qw/red green/;
+
+for (sort keys %plans) {
+    my $state = $plans{$_}{state};
+    my $url = $bamboo_url . $_;
+    if ($state eq 'Finished') {
+        $state = colored($plans{$_}{result}, $colors[ $plans{$_}{ok} ]);
+    } else { #in progress
+        if ($plans{$_}{progress}) {
+            $state .= '('.$plans{$_}{progress}.')';
+        }
+        #dummy color for proper column width, so it's justified
+        $state = colored($state, 'white');
+    }
+    printf "%-17s  %-26s  %-49s  %6s\n", $_, $state, $url, $plans{$_}{time_remaining} // '';
+}

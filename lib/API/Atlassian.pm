@@ -3,21 +3,20 @@ use strict; use warnings;
 use 5.010;
 use Carp;
 use Exporter 'import';
-use FindBin;
 use IPC::System::Simple 'capture';
 use JSON::XS;
 use List::MoreUtils 'any';
-use lib "$FindBin::RealBin/lib";
-use Ticket qw/cfg err/;
+
+use Ticket qw/cfg %EXIT/;
 
 our @EXPORT_OK = qw/
     request_response
 
     get_plan_fields
-    get_log_for_job
     get_rev_plans
     get_rev_plans_pretty
     is_plan_green
+    run_plan_for_rev
 
     create_issue
     set_issue_fields
@@ -41,6 +40,7 @@ our %EXPORT_TAGS = (
 
 my $HTTP_NO_CONTENT = 204;
 my $HTTP_UNAUTHORIZED = 401;
+my $HTTP_SERVICE_UNAVAILABLE = 503;
 
 my ($ci_tool_url, $tracker_url, $project_key) = cfg qw/ci_tool_host tracker_host project_key/;
 $tracker_url .= 'rest/api/2/';
@@ -63,6 +63,7 @@ sub attach_file_to_issue {#{{{
 sub request_response {#{{{
     my %params = (
         method => 'GET',
+        content_type => 'application/json',
         @_
     );
     croak 'Required parameter "url" not provided.' unless defined $params{url};
@@ -75,7 +76,7 @@ sub request_response {#{{{
 
     my @cmd = (
         '-X' => $params{method},
-        '-H' => 'Content-Type: application/json',
+        '-H' => 'Content-Type: ' . $params{content_type},
     );
 
     if ($params{json}) {
@@ -116,15 +117,18 @@ sub _curl {#{{{
         say STDERR $response[0];
         if ($code == $HTTP_UNAUTHORIZED) {
             Ticket::clear_authorization_data($url);
-            exit 1;
+            exit $EXIT{GENERIC};
+        } elsif ($code == $HTTP_SERVICE_UNAVAILABLE) {
+            say join '', @response;
+            exit $EXIT{EXTERNAL_SERVICE_DOWN};
         }
-        err $response[-1];
+        croak join '', @response;
     }
     return ($code, \@response);
 }#}}}
 
 ### bamboo ######
- 
+
 sub get_plan_fields {#{{{
     my ($key, @fields) = @_;
 
@@ -175,7 +179,7 @@ sub get_rev_plans_pretty {#{{{
         $plan_status{ $_->{key} } = \%plan;
     }
     return \%plan_status;
-}#}}} 
+}#}}}
 
 sub get_plan_progress {#{{{
     my ($plan) = @_;
@@ -185,14 +189,13 @@ sub get_plan_progress {#{{{
     )->{progress};
 }#}}}
 
-sub get_log_for_job {#{{{
-    my ($job) = @_;
-    my ($plan) = $job =~ m/(.+)-/;
-
+sub run_plan_for_rev {#{{{
+    my ($plan, $rev, $force) = @_;
     return request_response(
-        url => $ci_tool_url ."download/$plan/build_logs/$job.log",
-        raw => 1,
-    );
+        method => 'POST',
+        url => $ci_tool_url ."rest/api/latest/queue/$plan.json?customRevision=$rev",
+        content_type => '',
+    )->{buildResultKey};
 }#}}}
 
 ### jira issue   ######
@@ -211,14 +214,14 @@ sub create_issue {#{{{
 
 sub get_issue_fields {#{{{
     my ($key, $fields) = @_;
-    
+
     my $fields_query = join ',', @{$fields};
     my $rsvp = request_response(
         method => 'GET',
         url => $issue_url . $key,
         query => {fields => $fields_query},
     );
-    err "Unsupported fields: $fields_query" unless $rsvp->{fields};
+    croak "Unsupported fields: $fields_query" unless $rsvp->{fields};
     return $rsvp->{fields};
 }#}}}
 
@@ -310,6 +313,15 @@ sub search_for_issues {#{{{
     )->{issues};
 }#}}}
 
+### jira user
+
+sub get_user {
+    return request_response(
+        method => 'GET',
+        url    => $tracker_url .'user?key='. $_[0]
+    );
+}
+
 ### jira version ######
 
 sub create_version {#{{{
@@ -350,9 +362,9 @@ sub in_complex { {name => $_[0]} }
 sub in_complex_list { [map { in_complex($_) } split ',', $_[0]] }
 
 sub out_complex { if ($_[0]) { $_[0]{name} } }
-sub out_complex_list { 
-    ref $_[0] && @{ $_[0] } 
-        ? join ',', map { out_complex($_) } @{$_[0]} 
+sub out_complex_list {
+    ref $_[0] && @{ $_[0] }
+        ? join ',', map { out_complex($_) } @{$_[0]}
         : undef
 }
 

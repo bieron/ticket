@@ -2,11 +2,10 @@ package IssueTracker::Jira;# {{{
 use strict; use warnings;
 use 5.010;
 use Carp;
-use FindBin;
 use JSON::XS;
 use List::MoreUtils qw/firstval/;
 use Role::Tiny::With;
-use lib "$FindBin::RealBin/lib";
+
 use API::Atlassian ':all';
 use Ticket qw/cfg err verbose/;
 
@@ -36,6 +35,7 @@ sub processor {#{{{
 
 sub composer {#{{{
     my %in = (
+        #parent => sub { {key => $_[0]} }, #JIRA REST API doesn't support updating sub-task parent
         (map {$_ => \&API::Atlassian::in_complex} qw/status priority resolution issuetype assignee reporter/),
         (map {$_ => \&API::Atlassian::in_complex_list} qw/components/),
         fixVersions => sub {
@@ -49,6 +49,7 @@ sub composer {#{{{
 
 sub decomposer {#{{{
     my %out = (
+        parent => sub { join ' ', $_[0]->{key}, $_[0]{fields}{summary} },
         (map {$_ => \&API::Atlassian::out_complex} qw/status priority resolution issuetype assignee reporter/),
         (map {$_ => \&API::Atlassian::out_complex_list} qw/components fixVersions/),
         issuelinks => sub {
@@ -83,8 +84,9 @@ sub decomposer {#{{{
     return wantarray ? %out : \%out;
 }#}}}
 
-sub translator {#{{{   
+sub translator {#{{{
     return {
+        fixversion => 'fixVersions',
         map {$_ => $_ . 's'} qw/fixVersion label component/
     };
 }#}}}
@@ -104,7 +106,7 @@ sub fetch {#{{{
 
     my %trans = %{ $self->translate(@fields) };
 
-    my %struct = %{ 
+    my %struct = %{
         get_issue_fields($key, [map { $trans{$_} } @fields])
     };
 
@@ -186,8 +188,8 @@ sub _upsert {#{{{
     # process special fields
     # It would be easy to support =/+/- modes in processors, by sending mode as another parameter
     # However it makes code more complex and there are more usability pitfalls than benefits
-    for my $field (sort keys %processable) {
-        $proc{$field}->($key, $processable{$field});
+    for (sort keys %processable) {
+        $proc{$_}->($key, $processable{$_});
     }
 
     return $key;
@@ -206,9 +208,11 @@ sub create {#{{{
 
 sub search {#{{{
     my ($self, %param) = @_;
-    carp q/'query' parameter required!/ unless $param{query};
+    croak q/'query' parameter required!/ unless $param{query};
 
     my %trans = %{ $self->translate(@{ $param{fields} }) };
+    delete $trans{key};
+
     my $fields = [$param{fields}
         ? values %trans
         : 'key'
@@ -229,7 +233,7 @@ sub search {#{{{
         my %struct = %{ $_->{fields} // {} };
 
         my %output = (key => $_->{key});
-        for my $name (keys %struct) {
+        for my $name (keys %trans) {
             my $value = exists $decomp{$name}
                 ? $decomp{$name}->($struct{$name})
                 : $struct{$name};
@@ -270,6 +274,11 @@ sub perform_transition {#{{{
         say "Performed '$transition->{name}' on $key (now $transition->{to}{name}).";
     }
     return;
+}#}}}
+
+sub issue_url {#{{{
+    my ($key) = _remove_self(@_);
+    return cfg('tracker_host') .'browse/'. $key;
 }#}}}
 
 my %version_name_2_id;
