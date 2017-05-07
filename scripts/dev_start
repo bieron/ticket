@@ -7,7 +7,7 @@ use IPC::System::Simple qw/system/;
 use Ticket qw/cfg err/;
 use API::Git;#}}}
 
-my $project_key = cfg 'project_key';
+my $project_key = cfg('project_key');
 local $" = ',';
 # process input
 my %O;

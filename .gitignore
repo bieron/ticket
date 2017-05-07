@@ -1,0 +1,7 @@
+# Eclipse local files
+.includepath
+.project
+ticket.conf
+/lib/perl5
+/bin
+/man

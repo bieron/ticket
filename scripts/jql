@@ -26,8 +26,8 @@ if ($O{help}) {
 my @tickets = Ticket::tracker->search(query => (join ' ', @ARGV), fields => $O{field});
 
 if ($O{url}) {
-    my $url = cfg 'tracker_host';
-    $_->{key} = $url . $_->{key} for @tickets;
+    my $url = cfg('tracker_host');
+    $_->{key} = $url .'browse/'. $_->{key} for @tickets;
 }
 
 ticket_out $_, @{$O{field}} for @tickets;
@@ -47,7 +47,7 @@ __END__
  Searches for issues in Jira with JQL_QUERY.
  Results are displayed by key and summary, one per line.
 
- When connecting to Jira, uses credentials stored in ~/.ticket/config
+ When connecting to Jira, uses credentials stored in ticket.conf
 
 =head1 OPTIONS
 

@@ -8,6 +8,7 @@ such as:
 - setting a branch in an issue and git checkouting it (scripts/dev_start)
 - updating and printing issue's fields (scripts/ticket)
 - displaying Bamboo plans' progress for a commit (scripts/bamboo)
+- triggering a plan (scripts/plan)
 
 and more.
 
@@ -23,8 +24,8 @@ Just run `install` executable.
 
 ## Authorization
 
-There are two ways for accessing remote services like Jira and Bamboo.
-You can either utilize cookies or store your credentials in ~/.ticket/config.
+There are two alternatives for accessing remote services like Jira and Bamboo.
+You can either utilize cookies or store your credentials in ticket.conf in repo root directory.
 The first way requires you to provide password on demand the first time you connect to both Bamboo or Jira,
 and then it stores it in a cookie. Cookie is not stored if you provide wrong password.
 

@@ -3,7 +3,6 @@ use strict; use warnings; #{{{
 use FindBin;
 use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
 use feature 'say';
-use Ticket qw/err/;
 use API::Git;
 use API::Atlassian; #}}}
 
@@ -19,8 +18,8 @@ RTFM
     exit 0;
 }
 
-my $plan = $ARGV[0];
+my ($plan, $committish) = @ARGV;
 err "Plan is required" unless $plan;
 
-my $rev = API::Git::get_rev($ARGV[1] // 'HEAD');
+my $rev = API::Git::get_rev($committish // 'HEAD');
 say API::Atlassian::run_plan_for_rev($plan, $rev);

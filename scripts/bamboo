@@ -7,7 +7,8 @@ use Term::ANSIColor;
 use feature 'say';
 use Ticket qw/cfg/;
 use API::Git;
-use API::Atlassian qw/get_rev_plans_pretty/; #}}}
+use API::Atlassian;
+#}}}
 
 my %O;
 my $rtfm = not GetOptions(#{{{
@@ -27,7 +28,7 @@ RTFM
 # if no ARGV - get rev from HEAD
 my $rev = API::Git::get_rev($ARGV[0] // 'HEAD');
 my $short_rev = substr $rev, 0, 7;
-my %plans = %{ get_rev_plans_pretty($rev, 'verbose') };
+my %plans = %{ API::Atlassian::get_rev_plans_pretty($rev, 'verbose') };
 
 say "plans for $short_rev";
 my $bamboo_url = cfg('ci_tool_host') .'browse/';

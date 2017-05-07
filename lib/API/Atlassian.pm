@@ -13,6 +13,7 @@ our @EXPORT_OK = qw/
     request_response
 
     get_plan_fields
+    get_log_for_job
     get_rev_plans
     get_rev_plans_pretty
     is_plan_green
@@ -34,15 +35,13 @@ our @EXPORT_OK = qw/
     get_versions
     modify_version_by_id
 /;
-our %EXPORT_TAGS = (
-    all => \@EXPORT_OK,
-);#}}}
+#}}}
 
 my $HTTP_NO_CONTENT = 204;
 my $HTTP_UNAUTHORIZED = 401;
 my $HTTP_SERVICE_UNAVAILABLE = 503;
 
-my ($ci_tool_url, $tracker_url, $project_key) = cfg qw/ci_tool_host tracker_host project_key/;
+my ($ci_tool_url, $tracker_url, $project_key) = cfg(qw/ci_tool_host tracker_host project_key/);
 $tracker_url .= 'rest/api/2/';
 my $issue_url = $tracker_url . 'issue/';
 my $ci_result_url = $ci_tool_url . 'rest/api/latest/result/';
@@ -107,7 +106,6 @@ sub _curl {#{{{
     my ($url, @cmd) = @_;
     unshift @cmd, qw/curl --silent -D-/, Ticket::get_authorization_data($url);
     push @cmd, $url;
-#    err join ' ', @cmd;
 
     my @response = capture(@cmd);
     #HTTP code is in the first line
@@ -187,6 +185,16 @@ sub get_plan_progress {#{{{
     return request_response(
         url => $ci_result_url . $plan .'.json'
     )->{progress};
+}#}}}
+
+sub get_log_for_job {#{{{
+    my ($job) = @_;
+    my ($plan) = $job =~ m/(.+)-/;
+
+    return request_response(
+        url => $ci_tool_url ."download/$plan/build_logs/$job.log",
+        raw => 1,
+    );
 }#}}}
 
 sub run_plan_for_rev {#{{{
@@ -318,7 +326,7 @@ sub search_for_issues {#{{{
 sub get_user {
     return request_response(
         method => 'GET',
-        url    => $tracker_url .'user?key='. $_[0]
+        url    => $tracker_url .'user?username='. $_[0]
     );
 }
 

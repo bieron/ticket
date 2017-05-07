@@ -12,6 +12,7 @@ our @EXPORT_OK = qw/
     checkout_branch_assert
     checkout_branch
     fetch_remote
+    get_branch
     get_current_branch
     get_deltas
     get_issuekeys_from_branch
@@ -24,15 +25,21 @@ our @EXPORT_OK = qw/
     repo_root
     rev_contained_in
     tag_rev
+    is_rev_tagged
 /;
 
 my $DELIMITER = 'DeliMdElIM';
-my ($REMOTE, $TICKET_PATTERN) = cfg qw/remote ticket_pattern/;
+my ($REMOTE, $TICKET_PATTERN) = cfg(qw/remote ticket_pattern/);
 
 sub _match_against_ticket_pattern {#{{{
     my @keys = $_[0] =~ /$TICKET_PATTERN/g;
     return @keys;
 }#}}}
+
+sub is_rev_tagged {
+    my $rev = $_[0] // 'HEAD';
+    return int(! system(EXIT_ANY, "git describe $rev --exact-match &>/dev/null"));
+}
 
 sub repo_root {
     chomp(my $root_dir = capture(qw/git rev-parse --show-toplevel/));
@@ -43,14 +50,10 @@ sub cd_to_repo_root {#{{{
     chdir repo_root;
 }#}}}
 
-sub get_current_branch {#{{{
-    chomp(my $branch = capture(qw/git rev-parse --abbrev-ref HEAD/));
-    return $branch;
-}#}}}
+sub get_current_branch { get_branch('HEAD') }
 
 sub get_issuekeys_from_branch {#{{{
-    my $branch = $_[0] // get_current_branch;
-    return _match_against_ticket_pattern($branch);
+    return _match_against_ticket_pattern( get_branch($_[0] // 'HEAD') );
 }#}}}
 
 sub get_issuekeys_from_commit {#{{{
@@ -74,6 +77,11 @@ sub get_issuekeys_from_commit {#{{{
     return @keys;
 }#}}}
 
+sub get_branch {
+    chomp(my $branch = capture(qw/git rev-parse --abbrev-ref/, $_[0]));
+    return $branch;
+}
+
 sub get_rev { chomp( my $rev = capture(qw/git rev-parse/, $_[0]) ); $rev }
 
 my $fetched = 0;
@@ -96,10 +104,11 @@ sub pull_branch {#{{{
     my ($branch) = @_;
 
     fetch_remote;
+    my $remote_ref = $REMOTE.'/'.$branch;
 
-    if (get_log_diff($branch, 'origin/'.$branch)) {
+    if (get_log_diff($branch, $remote_ref)) {
         checkout_branch($branch);
-        system(qw/git merge -q/, 'origin/'.$branch);
+        system(qw/git merge -q/, $remote_ref);
         return $branch;
     }
     return;
@@ -141,17 +150,17 @@ sub checkout_branch_assert {#{{{
 }#}}}
 
 sub get_tag {#{{{
-    my ($branch) = @_;
-    $branch //= 'HEAD';
-    chomp(my $tag = capture(qw/git describe --abbrev=0/, $branch));
+    chomp(my $tag = capture(qw/git describe --abbrev=0/, $_[0] // 'HEAD'));
     return $tag;
 }#}}}
 
 sub get_deltas {#{{{
     my ($since, $until, $except) = @_;
-    my @files = grep {/\S/} capture(
-        qw/git log --name-only --pretty=format:/, $since .'..'. $until, '--not' => $except
-    );
+
+    my @cmd = (qw/git log --name-only --pretty=format:/, $since .'..'. $until);
+    push @cmd, ('--not' => $except) if $except;
+
+    my @files = grep {/\S/} capture(@cmd);
     chomp @files;
     return @files;
 }#}}}

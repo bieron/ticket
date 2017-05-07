@@ -3,22 +3,22 @@ use strict; use warnings;
 use 5.010;
 use Carp;
 use Class::Load 'load_class';
-use Config::Simple;
+use Cwd;
 use Data::Dump 'pp';
 use Exporter 'import';
-use autodie qw/system :filesys/;
-use JSON::XS;
-use List::MoreUtils qw/any firstval none/;
-use Text::Unidecode;#}}}
+use List::MoreUtils qw/firstval/;
+use Text::Unidecode;
+use Try::Tiny;
+use YAML::Syck;
+#}}}
 our @EXPORT_OK = qw/cfg ticket_out err verbose assert_branch build_branch get_issuekeys %EXIT/;
 
-my $dot_dir = $ENV{HOME} .'/.ticket';
-mkdir $dot_dir, 0700 unless -d $dot_dir;
 my %CFG;
 
 our %EXIT = (
     GENERIC               => 1,
     EXTERNAL_SERVICE_DOWN => 39,
+    HEADS_UP              => 44,
 );
 
 sub _build_config { #{{{
@@ -26,22 +26,26 @@ sub _build_config { #{{{
         # Defaults
         user           => $ENV{USER},
         tracker_class  => 'IssueTracker::Jira',
-        ticket_pattern => qr/(\w+-\d+)/,
+        ticket_pattern => qr/([a-zA-Z]+-\d+)/,
         remote         => 'origin',
         branch_length  => 88,
     );
-    my $config_file = $dot_dir .'/config';
+    (my $config_file = Cwd::realpath(__FILE__)) =~ s|lib/Ticket.pm|ticket.conf|;
     if (-e $config_file) {
-        Config::Simple->import_from($config_file, \my %file);
-        # Overwrite defaults with config
-        for (keys %file) {
-            (my $key = $_) =~ s/^common\.//;
-            $CFG{$key} = $file{$_};
-            if (/host$/) {
-                #append / at the end
-                $CFG{$key} =~ s| [^/] \K $ |/|x;
+        try {
+            my $data = YAML::Syck::LoadFile($config_file);
+            # Overwrite defaults with config
+            for (keys %$data) {
+                $CFG{$_} = $data->{$_};
+                if (/host$/) {
+                    #append / at the end
+                    $CFG{$_} =~ s| [^/] \K $ |/|x;
+                }
             }
-        }
+        } catch {
+            say STDERR "Problems parsing $config_file: $_";
+            exit 1;
+        };
     }
 
     # If either pass or credentials are defined in config, they will be used instead of cookie mechanism
@@ -51,18 +55,18 @@ sub _build_config { #{{{
     }
 
     # These cannot be overwritten
-    $CFG{dot_dir} = $dot_dir;
     $CFG{branch_pattern} = sprintf '(\w+/%s[_-]\w+)', $CFG{ticket_pattern};
 }#}}}
 
 ### Functions ###
 
-*cfg = sub (@) {
+my $loaded;
+sub cfg {#{{{
+    return @CFG{@_} if defined $loaded;
     _build_config();
-    no warnings 'redefine';
-    *cfg = sub (@) { @CFG{ @_ } };
+    $loaded = 1;
     return @CFG{@_};
-};
+}#}}}
 sub err ($) { die ((ref $_[0] ? pp $_[0] : $_[0])."\n") }
 sub verbose(@) { cfg('verbose') && say @_ }
 
@@ -73,6 +77,15 @@ sub tracker {#{{{
     my $class = cfg('tracker_class');
     load_class($class);
     return $tracker = $class->new;
+}#}}}
+
+my $dot_dir;
+sub _dot_dir {#{{{
+    return $dot_dir if defined $dot_dir;
+
+    $dot_dir = $ENV{HOME} .'/.ticket';
+    mkdir $dot_dir, 0700 unless -d $dot_dir;
+    return $dot_dir;
 }#}}}
 
 my $issue_matches_branch;
@@ -112,7 +125,7 @@ sub assert_branch {#{{{
         tracker->update($key, description => {'=' => $desc});
         verbose "Prepended $key description with $branch";
     } else {
-        err "no branch in $key.";
+        croak "no branch in $key.";
     }
     return $branch;
 }#}}}
@@ -148,7 +161,7 @@ sub build_branch {#{{{
 
 sub _service_cookie_from_url {#{{{
     my ($service) = $_[0] =~ m|//(\w+)|;
-    return $dot_dir .'/jar_'. $service;
+    return _dot_dir() .'/jar_'. $service;
 }#}}}
 sub clear_authorization_data {#{{{
     # Ignore cookies if credentials provided
@@ -175,7 +188,7 @@ sub get_issuekeys {#{{{
     my @keys = API::Git::get_issuekeys_from_branch();
     @keys = API::Git::get_issuekeys_from_commit() unless @keys;
 
-    err 'No ticket could be determined.' unless @keys;
+    croak 'No ticket could be determined.' unless @keys;
 
     return @keys;
 }#}}}
@@ -215,7 +228,7 @@ sub ticket_out ($;@) {#{{{
 
     if (@fields < 2) {
         out $issue->{$fields[0] // 'key'};
-    } elsif (@fields == 2 and any {$_ eq 'key'} @fields) {
+    } elsif (@fields == 2 and 'key' ~~ \@fields) {
         print $issue->{key} ."\t";
         out $issue->{$fields[int('key' eq $fields[0])]};
     } else {

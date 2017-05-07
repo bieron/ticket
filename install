@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo Creating ~/.ticket directory for config and cache
+echo Creating ~/.ticket directory for cache
 [ -d ~/.ticket ] || mkdir ~/.ticket -m 700
 ERR=$?
 [ 0 != $ERR ] && exit $ERR
@@ -8,10 +8,10 @@ ERR=$?
 DIR=`dirname $0`
 cd $DIR
 
-cp config.example ~/.ticket/config
+cp ticket.conf{.example,}
 
 echo Installing perl dependencies
-cpanm --installdeps .
+cpanm --installdeps . -l .
 ERR=$?
 [ 0 != $ERR ] && exit $ERR
 

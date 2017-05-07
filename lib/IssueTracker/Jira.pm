@@ -6,7 +6,7 @@ use JSON::XS;
 use List::MoreUtils qw/firstval/;
 use Role::Tiny::With;
 
-use API::Atlassian ':all';
+use API::Atlassian;
 use Ticket qw/cfg err verbose/;
 
 with 'IssueTracker';# }}}
@@ -21,10 +21,10 @@ sub processor {#{{{
         (map {$_ => \&log_work} qw/log work worklog/),
         assignee => sub {
             my ($key, $assignee) = @_;
-            $assignee = cfg 'user' if $assignee eq '@';
+            $assignee = cfg('user') if $assignee eq '@';
             # unassign if $assignee is false
             undef $assignee unless $assignee;
-            assign_to_issue($key, $assignee);
+            API::Atlassian::assign_to_issue($key, $assignee);
         },
         comment => \&API::Atlassian::comment_issue,
         (map {$_ => \&perform_transition} qw/status workflow action/),
@@ -49,7 +49,7 @@ sub composer {#{{{
 
 sub decomposer {#{{{
     my %out = (
-        parent => sub { join ' ', $_[0]->{key}, $_[0]{fields}{summary} },
+        parent => sub { join ' ', $_[0]{key}, $_[0]{fields}{summary} },
         (map {$_ => \&API::Atlassian::out_complex} qw/status priority resolution issuetype assignee reporter/),
         (map {$_ => \&API::Atlassian::out_complex_list} qw/components fixVersions/),
         issuelinks => sub {
@@ -107,12 +107,12 @@ sub fetch {#{{{
     my %trans = %{ $self->translate(@fields) };
 
     my %struct = %{
-        get_issue_fields($key, [map { $trans{$_} } @fields])
+        API::Atlassian::get_issue_fields($key, [map { $trans{$_} } @fields])
     };
 
     my %output = (key => $key);
     %trans = reverse %trans;
-    my %decomp  = $self->decomposer;
+    my %decomp = $self->decomposer;
     for my $name (keys %struct) {
         my $value = exists $decomp{$name}
             ? $decomp{$name}->($struct{$name})
@@ -180,9 +180,9 @@ sub _upsert {#{{{
     # upsert payload
     if ($key) {
         # %inner might be empty if all $outer %fields are %processable
-        set_issue_fields($key, \%inner) if scalar keys %inner;
+        API::Atlassian::set_issue_fields($key, \%inner) if scalar keys %inner;
     } else {
-        $key = create_issue(\%inner);
+        $key = API::Atlassian::create_issue(\%inner);
     }
 
     # process special fields
@@ -228,7 +228,7 @@ sub search {#{{{
     %trans = reverse %trans;
     my %decomp  = $self->decomposer;
     my @issues;
-    for (@{ search_for_issues(%api) }) {
+    for (@{ API::Atlassian::search_for_issues(%api) }) {
         #there will be no fields if only key was requested
         my %struct = %{ $_->{fields} // {} };
 
@@ -247,7 +247,7 @@ sub search {#{{{
 
 sub log_work {#{{{
     my ($key, $value) = _remove_self(@_);
-    log_work_for_issue($key, split '@', $value);
+    API::Atlassian::log_work_for_issue($key, split '@', $value);
     return;
 }#}}}
 
@@ -255,7 +255,7 @@ sub perform_transition {#{{{
     my ($key, @values) = _remove_self(@_);
 
     for my $provided_name (map {split ',',$_} @values) {
-        my @available = @{ get_issue_transitions($key) };
+        my @available = @{ API::Atlassian::get_issue_transitions($key) };
 
         if (not @available) {
             err "No actions possible for $key.";
@@ -270,8 +270,8 @@ sub perform_transition {#{{{
 
             err "Invalid action '$provided_name'.\nPossible actions for $key:$possibles";
         }
-        transition_issue($key, $transition->{id});
-        say "Performed '$transition->{name}' on $key (now $transition->{to}{name}).";
+        API::Atlassian::transition_issue($key, $transition->{id});
+        verbose "Performed '$transition->{name}' on $key (now $transition->{to}{name}).";
     }
     return;
 }#}}}
@@ -289,16 +289,16 @@ sub assert_version {#{{{
         return $version_name_2_id{ $name }
     }
 
-    for (@{ get_versions() }) {
+    for (@{ API::Atlassian::get_versions() }) {
         if ($_->{name} eq $name) {
             #version already exists
             return $version_name_2_id{ $name } = $_->{id};
         }
     }
 
-    my $id = create_version(name => $name);
+    my $id = API::Atlassian::create_version(name => $name);
     verbose "Created version '$name'";
-    return $id;
+    return $version_name_2_id{ $name } = $id;
 }#}}}
 
 1;

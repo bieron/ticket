@@ -20,7 +20,7 @@ my $rtfm = not GetOptions(
     'k|print-key'   => \$O{print_ticket},
 );
 
-my ($ticket_pattern, $project_key) = cfg qw/ticket_pattern project_key/;
+my ($ticket_pattern, $project_key) = cfg(qw/ticket_pattern project_key/);
 for (@ARGV) {
     if (/^$ticket_pattern$/) {
         push @keys, $_;
@@ -45,8 +45,7 @@ $O{checkout} = 1 if defined $O{upstream};
 @keys = Ticket::get_issuekeys unless @keys;
 
 if ($O{print_ticket}) {
-    local $, = ' ';
-    say @keys;
+    say join ' ', @keys;
     exit;
 }
 
@@ -96,7 +95,7 @@ __END__
 
  Short version options can be glued together, e.g. -csf name=value
 
- When connecting to Jira, uses credentials stored in ~/.ticket/config
+ When connecting to Jira, uses credentials stored in ticket.conf
 
 =head1 OPTIONS
 
