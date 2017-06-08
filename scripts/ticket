@@ -134,8 +134,9 @@ __END__
 
 =head2 Fields that are handled in a special manner:
 
-    work=PERIOD@DATE
-        Logs PERIOD of worktime on DATE.
+    work=PERIOD@COMMENT@DATE
+        Logs PERIOD of worktime on DATE with COMMENT.
+        COMMENT is optional. DATE defaults to current datetime.
 
     assignee=@
         Assigns to current user.

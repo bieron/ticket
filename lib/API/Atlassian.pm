@@ -286,12 +286,13 @@ sub link_issues {# {{{
 }#}}}
 
 sub log_work_for_issue {#{{{
-    my ($key, $time, $date) = @_;
+    my ($key, $time, $comment, $date) = @_;
 
     my %json = (
         timeSpent => $time,
     );
-    $json{started} = $date if defined $date;
+    $json{started} = $date if $date;
+    $json{comment} = $comment if $comment;
 
     return request_response(
         url => (sprintf '%s%s/worklog?', $issue_url, $key),

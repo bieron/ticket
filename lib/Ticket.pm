@@ -10,6 +10,7 @@ use List::MoreUtils qw/firstval/;
 use Text::Unidecode;
 use Try::Tiny;
 use YAML::Syck;
+use experimental 'smartmatch';
 #}}}
 our @EXPORT_OK = qw/cfg ticket_out err verbose assert_branch build_branch get_issuekeys %EXIT/;
 
@@ -26,7 +27,7 @@ sub _build_config { #{{{
         # Defaults
         user           => $ENV{USER},
         tracker_class  => 'IssueTracker::Jira',
-        ticket_pattern => qr/([a-zA-Z]+-\d+)/,
+        ticket_pattern => qr/(\w+-\d+)/,
         remote         => 'origin',
         branch_length  => 88,
     );
