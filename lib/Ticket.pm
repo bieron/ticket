@@ -27,7 +27,7 @@ sub _build_config { #{{{
         # Defaults
         user           => $ENV{USER},
         tracker_class  => 'IssueTracker::Jira',
-        ticket_pattern => qr/(\w+-\d+)/,
+        ticket_pattern => qr/([A-Za-z0-9]+-\d+)/,
         remote         => 'origin',
         branch_length  => 88,
     );
