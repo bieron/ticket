@@ -27,14 +27,13 @@ Just run `install` executable.
 Instead of installing, you can just `docker pull jbieron/ticket`.
 Then all you need to do is to create a config file:
 ```sh
-docker cp ticket:/usr/lib/ticket/ticket.conf.example path/to/ticket.conf
+docker cp jbieron/ticket:/usr/lib/ticket/ticket.conf.example path/to/ticket.conf
 ```
 However, simpler installation comes at the cost of trickier command call.
 For example, to run `ticket`, you now have to run the following:
 ```sh
-docker run --rm --workdir /cwd -v `pwd`:/cwd -v path/to/ticket.conf:/usr/lib/ticket/ticket.conf ticket ticket -h
+docker run --rm --workdir /cwd -v `pwd`:/cwd -v path/to/ticket.conf:/usr/lib/ticket/ticket.conf jbieron/ticket ticket
 ```
-Note the repeated "ticket" - first one is the docker image, followed by the executable.
 
 ## Under the hood
 
