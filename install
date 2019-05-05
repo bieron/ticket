@@ -8,12 +8,20 @@ ERR=$?
 DIR=`dirname $0`
 cd $DIR
 
-cp ticket.conf{.example,}
+echo
+if [ -f ticket.conf ]; then
+    echo ticket.conf already exists, update manually if needed
+else
+    echo Initializing new ticket.conf from ticket.conf.example
+    cp ticket.conf{.example,}
+fi
+echo
 
-echo Installing perl dependencies
-cpanm --installdeps . -l .
+echo Installing perl dependencies...
+PERL5LIB= cpanm -n --installdeps . -l .
 ERR=$?
 [ 0 != $ERR ] && exit $ERR
+echo Done.
 
 echo
 echo Checking git and curl.
@@ -23,5 +31,9 @@ echo Done.
 
 echo
 echo 'Add following line to ~/.bashrc or ~/.bash_login or you know best:'
-echo
 echo 'export PATH=$PATH:'$DIR/scripts
+if [ ! -f ticket.conf ]; then
+    echo """
+Optional, but recommended:
+Update $DIR/ticket.conf with your JIRA username, password and component (team_letter)"""
+fi

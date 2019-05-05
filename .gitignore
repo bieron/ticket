@@ -1,7 +1,9 @@
 # Eclipse local files
 .includepath
 .project
+.perl-version
 ticket.conf
 /lib/perl5
 /bin
 /man
+*pyc

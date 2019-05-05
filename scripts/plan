@@ -3,23 +3,31 @@ use strict; use warnings; #{{{
 use FindBin;
 use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
 use feature 'say';
+use Ticket qw/cfg/;
 use API::Git;
 use API::Atlassian; #}}}
 
 if ($ARGV[0] =~ /^--?h(?:elp)?/) {
-    print <<'RTFM';
+    require Pod::Usage;
+    Pod::Usage::pod2usage({-verbose => 1, -exitval => 0});
+}
+
+my $plan       = $ARGV[0] // cfg('project_key');
+my $committish = $ARGV[1] // 'HEAD';
+
+my $rev = API::Git::get_rev($committish);
+say API::Atlassian::run_plan_for_rev($plan, $rev);
+__END__
+
+=pod
+
+=head1 NAME
+
 plan - schedule a bamboo plan for given revision.
+
+=head1 SYNOPSIS
 
 plan [PLAN_KEY [COMMITTISH]]
 
-PLAN_KEY    key of the bamboo plan you want to run.
-COMMITTISH  revision to run the plan on. Defaults to "HEAD". Can be a branch, tag, hash, etc.
-RTFM
-    exit 0;
-}
-
-my ($plan, $committish) = @ARGV;
-err "Plan is required" unless $plan;
-
-my $rev = API::Git::get_rev($committish // 'HEAD');
-say API::Atlassian::run_plan_for_rev($plan, $rev);
+    PLAN_KEY    key of the bamboo plan you want to run. Defaults to project key in config
+    COMMITTISH  revision to run the plan on. Defaults to "HEAD". Can be a branch, tag, hash, etc.

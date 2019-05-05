@@ -2,9 +2,10 @@
 use strict; use warnings;#{{{
 use FindBin;
 use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
+use List::MoreUtils qw/any/;
 use 5.010;
 use Getopt::Long qw/:config bundling/;
-use Ticket qw/cfg ticket_out/;
+use Ticket;
 #}}}
 
 my %O = (
@@ -14,6 +15,8 @@ my $rtfm = not GetOptions(
     'h|help+'       => \$O{help},
     'f|field=s@'    => \$O{field},
     'l|link|url'    => \$O{url},
+    'v|verbose'     => sub { Ticket::session_cfg(verbose => 1) },
+    'format=s'      => \$O{format},
 );
 if ($rtfm || ! @ARGV) {
     $O{help} = 1;
@@ -22,54 +25,66 @@ if ($O{help}) {
     require Pod::Usage;
     Pod::Usage::pod2usage({-verbose => $O{help}-1, -exitval => $rtfm});
 }
+if ($O{format}) {
+    # FIXME hack to jumpstart cfg in this package context
+    Ticket::cfg('format');
 
-my @tickets = Ticket::tracker->search(query => (join ' ', @ARGV), fields => $O{field});
-
-if ($O{url}) {
-    my $url = cfg('tracker_host');
-    $_->{key} = $url .'browse/'. $_->{key} for @tickets;
+    Ticket::session_cfg('format', $O{format});
 }
 
-ticket_out $_, @{$O{field}} for @tickets;
+my $tracker = Ticket::tracker;
+my @tickets = $tracker->search(query => (join ' ', @ARGV), fields => $O{field});
+
+if ($O{url}) {
+    $_->{key} = $tracker->issue_url($_->{key}) for @tickets;
+}
+
+Ticket::ticket_out(\@tickets, @{$O{field}});
 __END__
 =pod
 
 =head1 NAME
 
- jql - shell interface to Jira issue search
+jql - shell interface to Jira issue search
 
 =head1 SYNOPSIS
 
- jql [-f FIELD...] [-l] JQL_QUERY
+jql [-f FIELD...] [-l] JQL_QUERY [--format FORMAT]
 
 =head1 DESCRIPTION
 
- Searches for issues in Jira with JQL_QUERY.
- Results are displayed by key and summary, one per line.
+Searches for issues in Jira with JQL_QUERY.
+Results are displayed by key and summary, one per line.
 
- When connecting to Jira, uses credentials stored in ticket.conf
+When connecting to Jira, uses credentials stored in ~/.jirarc
 
 =head1 OPTIONS
 
- -h, --help
-    Display this text. Ignores other options.
+-h, --help
+   Display this text. Ignores other options.
 
- -f, --field
-    Specify what fields of tickets found to show.
-    Fields displayed in order given.
+-f, --field
+   Specify what fields of tickets found to show.
+   Fields displayed in order given.
 
- -l, --link, --url
-    Display url to issue instead of issue key.
+-l, --link, --url
+   Display url to issue instead of issue key.
+
+--format FORMAT
+   Specify different FORMAT, currently JSON is the only supported alternative.
 
 =head1 EXAMPLES
 
-  jql -f summary -f assignee component="API" and status="In QA"
+jql -f summary -f assignee component="Team U" and status="In QA"
 
-  jql assignee=$USER and status=open
+jql assignee=$USER and status=open
     List of user's own assignments, by key and summary
+
+jql -f key -f summary -l fixversion=v4.101.4
+    List of tasks to be tested on staging, with links for convenience
 
 =head1 AUTHOR
 
- Jan Bieroń, bieron@github.com
+bieron@github, feedback welcomed
 
 =cut

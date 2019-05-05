@@ -2,7 +2,6 @@ package IssueTracker::Jira;# {{{
 use strict; use warnings;
 use 5.010;
 use Carp;
-use JSON::XS;
 use List::MoreUtils qw/firstval/;
 use Role::Tiny::With;
 
@@ -18,10 +17,10 @@ sub new { bless \$_[0], $_[0] }
 
 sub processor {#{{{
     my %processor = (
-        (map {$_ => \&log_work} qw/log work worklog/),
+        log => \&log_work,
         assignee => sub {
             my ($key, $assignee) = @_;
-            $assignee = cfg('user') if $assignee eq '@';
+            $assignee = cfg('jira_username')//cfg('user') if $assignee eq '@';
             # unassign if $assignee is false
             undef $assignee unless $assignee;
             API::Atlassian::assign_to_issue($key, $assignee);
@@ -67,6 +66,13 @@ sub decomposer {#{{{
         },
         labels => sub { join ',', @{$_[0] // []} },
         summary => sub {$_[0]},
+        timetracking => sub {
+            my %log = %{$_[0]};
+            for (keys %log) {
+                delete $log{$_} if /Seconds$/;
+            }
+            return \%log;
+        },
     );
     $out{subtasks} = sub {
         my @subtasks;
@@ -87,7 +93,11 @@ sub decomposer {#{{{
 sub translator {#{{{
     return {
         fixversion => 'fixVersions',
-        map {$_ => $_ . 's'} qw/fixVersion label component/
+        (map {$_ => 'log'} qw/work worklog/),
+        (map {$_ => $_ . 's'} qw/fixVersion label component/),
+        time => 'timetracking',
+        estimate => 'timetracking.originalEstimate',
+        remaining => 'timetracking.remainingEstimate',
     };
 }#}}}
 
@@ -107,7 +117,7 @@ sub fetch {#{{{
     my %trans = %{ $self->translate(@fields) };
 
     my %struct = %{
-        API::Atlassian::get_issue_fields($key, [map { $trans{$_} } @fields])
+        API::Atlassian::get_issue_fields($key, [@trans{@fields}])
     };
 
     my %output = (key => $key);
@@ -137,6 +147,8 @@ sub _upsert {#{{{
     my %action_map = (
         '+' => 'add',
         '-' => 'remove',
+        '=' => 'set',
+        ':' => 'edit',
     );
     my (%inner, %processable);
 
@@ -252,9 +264,13 @@ sub log_work {#{{{
 }#}}}
 
 sub perform_transition {#{{{
-    my ($key, @values) = _remove_self(@_);
+    my ($key, $actions_csv) = _remove_self(@_);
 
-    for my $provided_name (map {split ',',$_} @values) {
+    my $skip_invalid = $actions_csv =~ s/!$//;
+
+    for my $transition (split ',', $actions_csv) {
+        my ($provided_name, $resolution) = split ':', $transition;
+
         my @available = @{ API::Atlassian::get_issue_transitions($key) };
 
         if (not @available) {
@@ -263,6 +279,7 @@ sub perform_transition {#{{{
 
         my $transition = firstval {$_->{name} =~ /$provided_name/i} @available;
         if (not defined $transition) {
+            next if $skip_invalid;
 
             my $possibles = join '', map {
                 "\n- $_->{name} \t(-> $_->{to}{name})"
@@ -270,7 +287,7 @@ sub perform_transition {#{{{
 
             err "Invalid action '$provided_name'.\nPossible actions for $key:$possibles";
         }
-        API::Atlassian::transition_issue($key, $transition->{id});
+        API::Atlassian::transition_issue($key, $transition->{id}, $resolution);
         verbose "Performed '$transition->{name}' on $key (now $transition->{to}{name}).";
     }
     return;

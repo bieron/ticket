@@ -3,6 +3,7 @@ use strict; use warnings;#{{{
 use FindBin;
 use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
 use Getopt::Long qw/:config bundling/;
+use Try::Tiny;
 use IPC::System::Simple qw/system/;
 use Ticket qw/cfg err/;
 use API::Git;#}}}
@@ -10,9 +11,11 @@ use API::Git;#}}}
 my $project_key = cfg('project_key');
 local $" = ',';
 # process input
-my %O;
+my %O = (
+    workflow => 'select,start!',
+);
 my $rtfm = not GetOptions(
-    'h|help'       => \$O{help},
+    'h|help+'      => \$O{help},
 
     'u|upstream=s' => \$O{upstream},
     'w|workflow:s' => \$O{workflow},
@@ -20,45 +23,24 @@ my $rtfm = not GetOptions(
 );
 my @keys = map { m/(\w+-\d+)/ ? $1 : (m/(\d+)/ ? $project_key.'-'.$1 : ()) } @ARGV;
 
-if ($rtfm || $O{help} || ! @keys) {
-    print <<'RTFM';
-
-SYNOPSIS
-
-   dev_start TICKETS...
-   dev_start TICKETS... -w [start,review,qa]
-   dev_start TICKETS... -u [origin/devel]
-
-DESCRIPTION
-
-Assigns $USER to the given TICKETS and sets them "In Progress" or traverses given $WORKFLOW path
-Puts a branch into description and checkouts to it.
-For a single TICKET, branch is built from issue type and summary, type/KEY-1_issue_summary_here
-For multiple TICKETS given, the branch is fixpack/TICKET-1_TICKET-2_TICKET-3
-
-OPTIONS
-
--w, --workflow [WORKFLOW]
-    Comma-separated workflow actions to be performed on issue, e.g. 'start,review,qa'.
-    Actions are matched case-insensitively, so 'qa' will match to 'In QA'. Defaults to 'start'
-
--u, --upstream [BRANCH]
-    Defines the start point for the new feature branch. Defaults to 'HEAD'
-
--p, --push
-    Push newly created branch to origin
-
-RTFM
-    exit
+if ($rtfm || $O{help}) {
+    require Pod::Usage;
+    Pod::Usage::pod2usage({-verbose => $O{help}-1, -exitval => $rtfm});
+}
+if (not @keys) {
+    err "At least one $project_key is required";
 }
 
-my $fields_to_set = ['assignee=@', 'status=' . ($O{workflow} // 'start')];
+my $fields_to_set = ['assignee=@', 'status=' . $O{workflow}];
 my $branch;
 
 if ($#keys == 0) {
     $branch = Ticket::assert_branch($keys[0], 1);
-    eval {
+    try {
         Ticket::manipulate_ticket($keys[0], $fields_to_set);
+    } catch {
+        use Data::Dump 'pp';
+        warn pp $_;
     };
 }
 else {
@@ -87,3 +69,39 @@ API::Git::checkout_branch_assert($branch, $O{upstream});
 if ($O{push}) {
     system(qw/git push --set-upstream/, cfg('remote'), $branch);
 }
+__END__
+
+=pod
+
+=head1 NAME
+
+dev_start - start work on issue in JIRA and git
+
+=head1 SYNOPSIS
+
+dev_start TICKETS...
+
+dev_start TICKETS... -w [start,review,qa]
+
+dev_start TICKETS... -u [origin/devel]
+
+=head1 DESCRIPTION
+
+Assigns $USER to the given TICKETS and sets them "In Progress" or traverses given $WORKFLOW path
+Puts a branch into description and checkouts to it.
+For a single TICKET, branch is built from issue type and summary, type/KEY-1_issue_summary_here
+For multiple TICKETS given, the branch is fixpack/TICKET-1_TICKET-2_TICKET-3
+
+=head1 OPTIONS
+
+-w, --workflow [WORKFLOW]
+    Comma-separated workflow actions to be performed on issue, e.g. 'start,review,qa'.
+    Actions are matched case-insensitively, so 'qa' will match to 'In QA'. Defaults to 'start'
+
+-u, --upstream [BRANCH]
+    Defines the start point for the new feature branch. Defaults to 'HEAD'
+
+-p, --push
+    Push newly created branch to origin
+
+=cut

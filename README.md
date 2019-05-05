@@ -22,28 +22,40 @@ You also need to have `curl` and `git` available in your $PATH.
 
 Just run `install` executable.
 
-## Authorization
+## Docker
 
-There are two alternatives for accessing remote services like Jira and Bamboo.
-You can either utilize cookies or store your credentials in ticket.conf in repo root directory.
-The first way requires you to provide password on demand the first time you connect to both Bamboo or Jira,
-and then it stores it in a cookie. Cookie is not stored if you provide wrong password.
+Instead of installing, you can just `docker pull jbieron/ticket`.
+Then all you need to do is to create a config file:
+```sh
+docker cp ticket:/usr/lib/ticket/ticket.conf.example path/to/ticket.conf
+```
+However, simpler installation comes at the cost of trickier command call.
+For example, to run `ticket`, you now have to run the following:
+```sh
+docker run --rm --workdir /cwd -v `pwd`:/cwd -v path/to/ticket.conf:/usr/lib/ticket/ticket.conf ticket ticket -h
+```
+Note the repeated "ticket" - first one is the docker image, followed by the executable.
 
-For the second way to work you need to have `pass = PLAINTEXT_PASS` line in config.
-Note that config approach takes precedence over cookie mechanism.
+## Under the hood
+
+### Authorization
+
+You can encode your password in ticket.config in repo root, in Base64 format, under key `pass64`.
+This option takes precedence over other ways of managing your password.
+
+You can also just define `pass: PLAINTEXT_PASS` line in ticket.conf.
+
+When config lacks both `pass` and `pass64`, ticket asks for password the first time you connect to either Bamboo or Jira,
+and it stores it in a cookie. Cookie is not stored if you provide wrong password.
 
 ## FAQ
 
 - **Q. How do I...?**
 
-A. Most scripts have --help option. That has to do for now.
+A. Most scripts have --help option. Or ask bieron@github.
 
 - **Q. How about...?**
 - **Q. Why can't I...?**
 - **Q. What the f...?**
 
-A. Feedback welcomed at jbieron@gmail.com
-
-## Author
-
-Jan Bieroń, jbieron@gmail.com
+A. Feedback welcomed!

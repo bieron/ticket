@@ -5,7 +5,7 @@ use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
 use Getopt::Long qw/:config bundling/;
 use List::MoreUtils qw/any none/;
 use 5.010;
-use Ticket qw/cfg ticket_out/;
+use Ticket qw/cfg session_cfg ticket_out/;
 use API::Git;#}}}
 
 my (%O, @keys); #{{{ handle input
@@ -18,6 +18,8 @@ my $rtfm = not GetOptions(
     'u|upstream:s'  => \$O{upstream},
 
     'k|print-key'   => \$O{print_ticket},
+    'v|verbose'     => sub { Ticket::session_cfg(verbose => 1) },
+    'format=s'      => \$O{format},
 );
 
 my ($ticket_pattern, $project_key) = cfg(qw/ticket_pattern project_key/);
@@ -48,6 +50,9 @@ if ($O{print_ticket}) {
     say join ' ', @keys;
     exit;
 }
+if ($O{format}) {
+    session_cfg('format', $O{format});
+}
 
 for my $key (@keys) { #{{{ process tickets
     if (any {defined} @O{qw/checkout get_branch set_branch/}) {
@@ -63,7 +68,7 @@ for my $key (@keys) { #{{{ process tickets
 
     if ($O{field}) {
         if (my $issue = Ticket::manipulate_ticket($key, $O{field})) {
-            ticket_out $issue, @{$O{field}};
+            ticket_out($issue, @{$O{field}});
         }
     }
 }#}}}
@@ -72,105 +77,107 @@ __END__
 
 =head1 NAME
 
- ticket - shell interface to Jira issues.
+ticket - shell interface to Jira issues.
 
 =head1 SYNOPSIS
 
- ticket -h [-h [-h]]
- ticket -k
- ticket TICKET [TICKET...] field1=value field2+add_value field3-remove_value
- ticket -cs TICKET
- ticket -su origin/master TICKET
+ticket -h [-h [-h]]
+ticket -k
+ticket TICKET [TICKET...] field1=value field2+add_value field3-remove_value
+ticket -cs TICKET
+ticket -su origin/master TICKET
 
 =head1 DESCRIPTION
 
- With TICKET[s], performs operations on or related to issues.
- If no TICKET is provided, looks for it in current branch name.
- If it's not found there, looks for it in last non-merge commit message.
- If it's not found there, exits with error.
+With TICKET[s], performs operations on or related to issues.
+If no TICKET is provided, looks for it in current branch name.
+If it's not found there, looks for it in last non-merge commit message.
+If it's not found there, exits with error.
 
- Options --checkout, --set-branch (without parameters) and --print-branch
- build the branch name by concatenating issue type, key and summary,
- e.g. bugfix/KEY-1234_Issue_summary
+Options --checkout, --set-branch (without parameters) and --print-branch
+build the branch name by concatenating issue type, key and summary,
+e.g. bugfix/KEY-1234_Issue_summary
 
- Short version options can be glued together, e.g. -csf name=value
+Short version options can be glued together, e.g. -csf name=value
 
- When connecting to Jira, uses credentials stored in ticket.conf
+When connecting to Jira, uses credentials stored in ~/.jirarc
 
 =head1 OPTIONS
 
- -h, --help
-    Displays this text. Ignores other options.
+-h, --help
+   Displays this text. Ignores other options.
 
- -b, --get-branch
-    Prints task branch fetched from issue.
+-b, --get-branch
+   Prints task branch fetched from issue.
 
- -c, --checkout
-    Checkouts to the built branch, creating it if it doesn't exist.
-    If it was created, it stems from HEAD.
+-c, --checkout
+   Checkouts to the built branch, creating it if it doesn't exist.
+   If it was created, it stems from HEAD.
 
- -k, --print-key
-    Prints keys found in branch or last commit. Or prints given TICKETs, for coherence sake.
+-k, --print-key
+   Prints keys found in branch or last commit. Or prints given TICKETs, for coherence sake.
 
- -s, --set-branch
-    Prepends issue description with built branch but only if there was none.
-    Doesn't change description if a branch is already included in issue description.
-    CAUTION: Might not recognize some branch patterns.
+-s, --set-branch
+   Prepends issue description with built branch but only if there was none.
+   Doesn't change description if a branch is already included in issue description.
+   CAUTION: Might not recognize some branch patterns.
 
- -u, --upstream START_POINT
-    Implies --checkout. Makes the newly created (by --checkout) branch stem from START_POINT.
+-u, --upstream START_POINT
+   Implies --checkout. Makes the newly created (by --checkout) branch stem from START_POINT.
+
+--format FORMAT
+   Specify different FORMAT, currently JSON is the only supported alternative.
 
 =head1 FIELDS
 
- field1=value1 [field2=value2 ...]
-    Sets issue's field to value.
+field1=value1 [field2=value2 ...]
+   Sets issue's field to value.
 
- field1+value1 field2-value
-    Adds value1 to field1 and removes value2 from field2.
-    These fields must be list fields, like "labels" or "group".
+field1+value1 field2-value
+   Adds value1 to field1 and removes value2 from field2.
+   These fields must be list fields, like "labels" or "group".
 
- field1 [field2 ...]
-    Prints fields' values.
+field1 [field2 ...]
+   Prints fields' values.
 
 =head2 Fields that are handled in a special manner:
 
-    work=PERIOD@COMMENT@DATE
-        Logs PERIOD of worktime on DATE with COMMENT.
-        COMMENT is optional. DATE defaults to current datetime.
+work=PERIOD@DATE
+    Logs PERIOD of worktime on DATE.
 
-    assignee=@
-        Assigns to current user.
+assignee=@
+    Assigns to current user.
 
-    comment=COMMENT
-        Adds a comment.
+comment=COMMENT
+    Adds a comment.
 
-    status=ACTION1,ACTION2...
-        Sequentially performs actions on the issue that match to given ACTIONx strings.
-        For example "verifi,work,review,qa" goes from "In Verification" to "In QA".
-        Actions have to be available for issue's current status.
+status=ACTION1,ACTION2...
+    Sequentially performs actions on the issue that match to given ACTIONx strings.
+    For example "verifi,work,review,qa" goes from "In Verification" to "In QA".
+    Actions have to be available for issue's current status.
 
 =head1 EXAMPLES
 
- ticket KEY-1234 -cs
-    Checkout to the branch built from KEY and put it in the issue description.
+ticket KEY-1234 -cs
+   Checkout to the branch built from KEY and put it in the issue description.
 
- ticket assignee=username status=start
-    Assign and start work on issue. Ticket is determined by branch name or last commit message.
+ticket assignee=@ status=start
+   Assign to current user and start work on issue. Ticket is determined by branch name or last commit message.
 
- ticket issuelinks,subtasks
-    Prints said issue fields to standard output.
+ticket issuelinks,subtasks
+   Prints said issue fields to standard output.
 
- ticket status=imple fixVersions=v1.23.4
-    Close (with resolution 'Implemented') and set fix version. Ticket is determined as above.
+ticket status=imple fixVersions=v1.23.4
+   Close (with resolution 'Implemented') and set fix version. Ticket is determined as above.
 
- ticket KEY-1234 work=2h@2001-04-01T10:09
-    Log two hours worth of work on specific date.
+ticket KEY-1234 work=2h@2001-04-01T10:09
+   Log two hours worth of work on specific date.
 
- ticket -b
-    Prints a branch build with issue's summary and issue type.
+ticket -b
+   Prints a branch build with issue's summary and issue type.
 
 =head1 AUTHOR
 
- Jan Bieroń, bieron@github.com
+bieron@github, feedback welcomed
 
 =cut

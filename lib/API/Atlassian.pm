@@ -1,4 +1,4 @@
-package API::Atlassian; #{{{
+package API::Atlassian;
 use strict; use warnings;
 use 5.010;
 use Carp;
@@ -7,7 +7,7 @@ use IPC::System::Simple 'capture';
 use JSON::XS;
 use List::MoreUtils 'any';
 
-use Ticket qw/cfg %EXIT/;
+use Ticket qw/cfg %EXIT err verbose/;
 
 our @EXPORT_OK = qw/
     request_response
@@ -35,18 +35,18 @@ our @EXPORT_OK = qw/
     get_versions
     modify_version_by_id
 /;
-#}}}
+
 
 my $HTTP_NO_CONTENT = 204;
 my $HTTP_UNAUTHORIZED = 401;
-my $HTTP_SERVICE_UNAVAILABLE = 503;
+my $HTTP_INTERNAL_ERROR = 500;
 
 my ($ci_tool_url, $tracker_url, $project_key) = cfg(qw/ci_tool_host tracker_host project_key/);
 $tracker_url .= 'rest/api/2/';
 my $issue_url = $tracker_url . 'issue/';
 my $ci_result_url = $ci_tool_url . 'rest/api/latest/result/';
 
-sub attach_file_to_issue {#{{{
+sub attach_file_to_issue {
     my ($key, $attachment_path) = @_;
 
     my $attach_url = $issue_url . $key .'/attachments';
@@ -57,9 +57,9 @@ sub attach_file_to_issue {#{{{
         '-H' => 'X-Atlassian-Token: no-check',
         '-F' => 'file=@'. $attachment_path,
     );
-}#}}}
+}
 
-sub request_response {#{{{
+sub request_response {
     my %params = (
         method => 'GET',
         content_type => 'application/json',
@@ -74,9 +74,9 @@ sub request_response {#{{{
     }
 
     my @cmd = (
-        '-X' => $params{method},
         '-H' => 'Content-Type: ' . $params{content_type},
     );
+    push @cmd, ('-X', $params{method}) if $params{method} ne 'GET';
 
     if ($params{json}) {
         push @cmd, (
@@ -100,59 +100,60 @@ sub request_response {#{{{
     }
 
     return decode_json($body);
-}#}}}
+}
 
-sub _curl {#{{{
+sub _curl {
     my ($url, @cmd) = @_;
     unshift @cmd, qw/curl --silent -D-/, Ticket::get_authorization_data($url);
     push @cmd, $url;
+    verbose(join ' ', @cmd, "\n");
 
     my @response = capture(@cmd);
     #HTTP code is in the first line
-    my ($code) = $response[0] =~ m|HTTP/\d\.\d (\d{3})|;
+    my ($code) = $response[0] =~ m|HTTP/[\d\.]+ (\d{3})|;
 
     if ($code > 299) {
         say STDERR $response[0];
         if ($code == $HTTP_UNAUTHORIZED) {
             Ticket::clear_authorization_data($url);
             exit $EXIT{GENERIC};
-        } elsif ($code == $HTTP_SERVICE_UNAVAILABLE) {
+        } elsif ($code >= $HTTP_INTERNAL_ERROR) {
             say join '', @response;
             exit $EXIT{EXTERNAL_SERVICE_DOWN};
         }
         croak join '', @response;
     }
     return ($code, \@response);
-}#}}}
+}
 
 ### bamboo ######
 
-sub get_plan_fields {#{{{
+sub get_plan_fields {
     my ($key, @fields) = @_;
 
     return request_response(
         url => $ci_result_url . $key .'.json?expand=' . (join ',', @fields)
     );
-}#}}}
+}
 
-sub get_rev_plans {#{{{
+sub get_rev_plans {
     my ($rev) = @_;
 
     return request_response(
         url => $ci_result_url .'byChangeset/'. $rev .'.json'
     )->{results}{result};
-}#}}}
+}
 
-sub is_plan_green {#{{{
+sub is_plan_green {
     my ($rev, $match) = @_;
 
     return any {
         $_->{plan}{key} =~ /$match/ and $_->{buildState} eq 'Successful'
     } @{ get_rev_plans($rev) // []};
-}#}}}
+}
 
 #FIXME it's too high level of abstraction for this api module
-sub get_rev_plans_pretty {#{{{
+sub get_rev_plans_pretty {
     my ($rev, $verbose) = @_;
 
     my %plan_status;
@@ -177,17 +178,17 @@ sub get_rev_plans_pretty {#{{{
         $plan_status{ $_->{key} } = \%plan;
     }
     return \%plan_status;
-}#}}}
+}
 
-sub get_plan_progress {#{{{
+sub get_plan_progress {
     my ($plan) = @_;
 
     return request_response(
         url => $ci_result_url . $plan .'.json'
     )->{progress};
-}#}}}
+}
 
-sub get_log_for_job {#{{{
+sub get_log_for_job {
     my ($job) = @_;
     my ($plan) = $job =~ m/(.+)-/;
 
@@ -195,20 +196,20 @@ sub get_log_for_job {#{{{
         url => $ci_tool_url ."download/$plan/build_logs/$job.log",
         raw => 1,
     );
-}#}}}
+}
 
-sub run_plan_for_rev {#{{{
+sub run_plan_for_rev {
     my ($plan, $rev, $force) = @_;
     return request_response(
         method => 'POST',
         url => $ci_tool_url ."rest/api/latest/queue/$plan.json?customRevision=$rev",
         content_type => '',
     )->{buildResultKey};
-}#}}}
+}
 
 ### jira issue   ######
 
-sub create_issue {#{{{
+sub create_issue {
     my ($issue_data) = @_;
 
     $issue_data->{fields}{project} //= {key => $project_key};
@@ -218,9 +219,9 @@ sub create_issue {#{{{
         url => $issue_url,
         json => $issue_data,
     )->{key};
-}#}}}
+}
 
-sub get_issue_fields {#{{{
+sub get_issue_fields {
     my ($key, $fields) = @_;
 
     my $fields_query = join ',', @{$fields};
@@ -229,11 +230,11 @@ sub get_issue_fields {#{{{
         url => $issue_url . $key,
         query => {fields => $fields_query},
     );
-    croak "Unsupported fields: $fields_query" unless $rsvp->{fields};
+    err("Unsupported fields: $fields_query") unless $rsvp->{fields};
     return $rsvp->{fields};
-}#}}}
+}
 
-sub set_issue_fields {#{{{
+sub set_issue_fields {
     my ($key, $payload) = @_;
 
     return request_response(
@@ -241,9 +242,9 @@ sub set_issue_fields {#{{{
         url => $issue_url . $key,
         json => $payload,
     );
-}#}}}
+}
 
-sub assign_to_issue {#{{{
+sub assign_to_issue {
     my ($key, $assignee) = @_;
 
     return request_response(
@@ -251,25 +252,30 @@ sub assign_to_issue {#{{{
         url => $issue_url . $key .'/assignee',
         json => {name => $assignee},
     );
-}#}}}
+}
 
-sub get_issue_transitions {#{{{
+sub get_issue_transitions {
     my ($key) = @_;
 
     return request_response(
         url => $issue_url . $key .'/transitions',
     )->{transitions};
-}#}}}
+}
 
-sub transition_issue {#{{{
-    my ($key, $transition_id) = @_;
+sub transition_issue {
+    my ($key, $transition_id, $resolution) = @_;
+
+    my $json = {transition => {id => $transition_id}};
+    if ($resolution) {
+        $json->{fields}{resolution}{name} = $resolution;
+    }
 
     return request_response(
         method => 'POST',
         url => $issue_url . $key .'/transitions',
-        json => {transition => {id => $transition_id}},
+        json => $json,
     );
-}#}}}
+}
 
 sub link_issues {# {{{
     my ($a, $relation, $b) = @_;
@@ -283,25 +289,24 @@ sub link_issues {# {{{
             outwardIssue => {key => $b},
         },
     );
-}#}}}
+}
 
-sub log_work_for_issue {#{{{
-    my ($key, $time, $comment, $date) = @_;
+sub log_work_for_issue {
+    my ($key, $time, $date) = @_;
 
     my %json = (
         timeSpent => $time,
     );
-    $json{started} = $date if $date;
-    $json{comment} = $comment if $comment;
+    $json{started} = $date if defined $date;
 
     return request_response(
         url => (sprintf '%s%s/worklog?', $issue_url, $key),
         method => 'POST',
         json => \%json
     );
-}#}}}
+}
 
-sub comment_issue {#{{{
+sub comment_issue {
     my ($key, $comment) = @_;
 
     return request_response(
@@ -309,9 +314,9 @@ sub comment_issue {#{{{
         url => $issue_url . $key .'/comment',
         json => { body => $comment },
     );
-}#}}}
+}
 
-sub search_for_issues {#{{{
+sub search_for_issues {
     my %params = @_;
 
 #   jql startAt limit fields
@@ -320,7 +325,13 @@ sub search_for_issues {#{{{
         url    => $tracker_url . 'search/',
         json   => \%params,
     )->{issues};
-}#}}}
+}
+
+sub get_issue_fields_definitions {
+    my ($key) = @_;
+
+    return request_response(url => $tracker_url .'issue/'. $key);
+}
 
 ### jira user
 
@@ -333,7 +344,7 @@ sub get_user {
 
 ### jira version ######
 
-sub create_version {#{{{
+sub create_version {
     my %params = (@_);
 
     return request_response(
@@ -346,16 +357,16 @@ sub create_version {#{{{
             %params,
         },
     )->{id};
-}#}}}
+}
 
-sub get_versions {#{{{
+sub get_versions {
     return request_response(
         method => 'GET',
         url    => $tracker_url .'project/'. $project_key .'/versions'
     );
-}#}}}
+}
 
-sub modify_version_by_id {#{{{
+sub modify_version_by_id {
     my ($id, %params) = @_;
 
     return request_response(
@@ -363,7 +374,42 @@ sub modify_version_by_id {#{{{
         method => 'PUT',
         json => \%params,
     );
-}#}}}
+}
+
+### bitbucket
+
+sub create_review {
+    my ($repo_url, $title, $desc, $refs, $users) = @_;
+
+    my ($project, $slug) = $repo_url =~ m|projects/(\w+)/repos/(\w+)|;
+
+    my $repo = {
+        slug => $slug,
+        #name => undef,
+        project => { key => $project }
+    };
+
+    my $r = request_response(
+        url => $repo_url,
+        method => 'POST',
+        json => {
+            title => $title,
+            description => $desc,
+            state => 'OPEN',
+            open => \1,
+            closed => \0,
+            locked => \0,
+            fromRef => { id => $refs->[0], repository => $repo },
+            toRef => { id => $refs->[1], repository => $repo },
+            reviewers => [map {{user => in_complex($_)}} @$users],
+            #links => { self => [ undef ] }
+    });
+    if ($r->{errors}) {
+        return $r->{errors};
+    }
+    return $r->{links}{self}[0]{href};
+}
+
 
 ### interface translators ####
 

@@ -2,49 +2,156 @@
 use strict; use warnings; #{{{
 use FindBin;
 use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
-use Getopt::Long;
+use Getopt::Long qw/:config bundling/;
 use Term::ANSIColor;
+use IPC::System::Simple qw/capture EXIT_ANY $EXITVAL/;
 use feature 'say';
-use Ticket qw/cfg/;
-use API::Git;
-use API::Atlassian;
-#}}}
+use Ticket qw/err cfg/;
+use API::Atlassian qw/get_rev_plans_pretty get_plan_fields get_log_for_job/; #}}}
 
+# treat argument param as a refname and get failed default plans for it
+# with -ref and --fail find a perl test and list it's failures.
+#   If more than one perl test is found, break
+# with ref and --all list all plans, even tod-bm
 my %O;
 my $rtfm = not GetOptions(#{{{
-    'h|help' => \$O{help},
+    'h|help+'              => \$O{help},
+    'fail|failed|failures' => \$O{failures},
+    'p|plan=s'             => \$O{plan},
+    'v|verbose'            => sub { Ticket::session_cfg(verbose => 1) },
 );
-if ($rtfm || $O{help}) {
-    print <<'RTFM';
-    bamboo - show all plans started for given revision
-
-bamboo COMMITTISH
-   show plans started for COMMITTISH (default HEAD)
-
-RTFM
-    exit $rtfm;
+if ($O{help} //= $rtfm) {
+    require Pod::Usage;
+    Pod::Usage::pod2usage({-verbose => $O{help}-1, -exitval => $rtfm});
 }#}}}
 
-# if no ARGV - get rev from HEAD
-my $rev = API::Git::get_rev($ARGV[0] // 'HEAD');
-my $short_rev = substr $rev, 0, 7;
-my %plans = %{ API::Atlassian::get_rev_plans_pretty($rev, 'verbose') };
-
-say "plans for $short_rev";
-my $bamboo_url = cfg('ci_tool_host') .'browse/';
-my @colors = qw/red green/;
-
-for (sort keys %plans) {
-    my $state = $plans{$_}{state};
-    my $url = $bamboo_url . $_;
-    if ($state eq 'Finished') {
-        $state = colored($plans{$_}{result}, $colors[ $plans{$_}{ok} ]);
-    } else { #in progress
-        if ($plans{$_}{progress}) {
-            $state .= '('.$plans{$_}{progress}.')';
-        }
-        #dummy color for proper column width, so it's justified
-        $state = colored($state, 'white');
-    }
-    printf "%-17s  %-26s  %-49s  %6s\n", $_, $state, $url, $plans{$_}{time_remaining} // '';
+if ($O{plan}) {
+    warn "Ignoring other arguments" if @ARGV;
+    handle_plan(uc $O{plan});
+    exit;
 }
+
+my $committish = $ARGV[0] // 'HEAD';
+my $rev = capture(EXIT_ANY, "git rev-parse $committish 2>/dev/null");
+if ($EXITVAL) {
+    handle_plan($ARGV[0]);
+    # say "\nAre you in LZ5 repository?";
+    exit;
+}
+chomp $rev;
+my $short_rev = substr $rev, 0, 7;
+my %plans = %{ get_rev_plans_pretty($rev, 'verbose') };
+
+if ($O{failures}) {
+    my @perl_plan_keys = grep {
+        ! $plans{$_}{ok}
+    } keys %plans;
+
+    if (! @perl_plan_keys) {
+        err "No (failed) perl plans for $short_rev.";
+    }
+    elsif (@perl_plan_keys == 1) {
+        handle_plan( $perl_plan_keys[0] );
+    }
+    else {
+        err "There is more than one unsuccessful perl plan for $short_rev:\n"
+            . (join "\n", @perl_plan_keys)
+            . "\nWhich one?";
+    }
+}
+else {
+    say "plans for $short_rev";
+    output(%plans);
+}
+
+sub handle_plan {#{{{
+    my ($plan) = @_;
+
+    #FIXME
+    #put -ALL between branch name and plan number, unless it's already there
+    my $job = $plan;
+    # if ($job !~ /ALL-\d+$/) {
+    #     $job =~ s/(?=-\d+$)/-ALL/;
+    # }
+
+    my $response = get_plan_fields($job, 'jobs'); #'testResults.failedTests');
+    # use Data::Dump 'pp';
+    # warn pp $response;
+    my @failures;
+    my $status = $response->{lifeCycleState};
+
+    if ($status eq 'Finished') {
+        @failures = map {
+            $_->{methodName}
+        } @{ $response->{testResults}{failedTests}{testResult} };
+    }
+    else {
+        my @log = get_log_for_job($job);
+        @failures = map {/CALL of (\S+) \S+ FAILED/ } @log;
+        my $found;
+        for (reverse @log) {
+            if (my ($current, $all) = m|\[0*(\d+)/0*(\d+)\]|) {
+                $found = 1;
+                printf "%s is %s, %d%% of tests (%d / %d tests)\n\n",
+                    $job, $status, 100*$current/$all, $current, $all;
+                last;
+            }
+        }
+        if (!defined $found) {
+            print "Log not started yet for $job\n";
+            return;
+        }
+    }
+    if (@failures) {
+        printf "%d failed tests for %s:\n%s\n",
+            (scalar @failures), $job, join "\n", @failures;
+    } else {
+        say "No failed tests found for $job.";
+    }
+}#}}}
+
+sub output {#{{{
+    my %plans = @_;
+    my $bamboo_url = cfg('ci_tool_host') .'browse/';
+    my @colors = qw/red green/;
+
+    for (sort keys %plans) {
+        my $state = $plans{$_}{state};
+        my $url = $bamboo_url . $_;
+        if ($state eq 'Finished') {
+            $state = colored($plans{$_}{result}, $colors[ $plans{$_}{ok} ]);
+        } else { #in progress
+            if ($plans{$_}{progress}) {
+                $state .= '('.$plans{$_}{progress}.')';
+            }
+            #dummy color for proper column width, so it's justified
+            $state = colored($state, 'white');
+        }
+        printf "%-17s  %-26s  %-49s  %6s\n", $_, $state, $url, $plans{$_}{time_remaining} // '';
+    }
+}#}}}
+
+__END__
+
+=pod
+
+=head1 NAME
+
+bamboo - show all plans started for given revision
+
+=head1 SYNOPSIS
+
+bamboo [--fail] COMMITTISH
+
+bamboo PLAN|JOB COMMITTISH
+
+=head1 DESCRIPTION
+
+bamboo COMMITTISH
+    show plans started for COMMITTISH (default HEAD)
+
+bamboo --fail COMMITTISH
+    shows failed plans for a TOD (perl plan) started for COMMITTISH (default HEAD)
+    breaks if more than one TOD plan was run.
+
+=cut

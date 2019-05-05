@@ -4,13 +4,13 @@ use 5.010;
 use Carp;
 use Exporter 'import';
 use IPC::System::Simple qw/capture system EXIT_ANY $EXITVAL/;
-use List::MoreUtils qw/any/;
+use List::MoreUtils qw/any uniq/;
 use Ticket qw/cfg %EXIT/;
 
 our @EXPORT_OK = qw/
     cd_to_repo_root
-    checkout_branch_assert
     checkout_branch
+    checkout_branch_assert
     fetch_remote
     get_branch
     get_current_branch
@@ -20,12 +20,14 @@ our @EXPORT_OK = qw/
     get_log_diff
     get_rev
     get_tag get_previous_tag
+    is_rev_tagged
+    list_tags
     merge_no_ff
     pull_branch
+    publish_branch
     repo_root
     rev_contained_in
     tag_rev
-    is_rev_tagged
 /;
 
 my $DELIMITER = 'DeliMdElIM';
@@ -38,7 +40,7 @@ sub _match_against_ticket_pattern {#{{{
 
 sub is_rev_tagged {
     my $rev = $_[0] // 'HEAD';
-    return int(! system(EXIT_ANY, "git describe $rev --exact-match &>/dev/null"));
+    return int(! system(EXIT_ANY, "git describe $rev --exact-match 2>/dev/null"));
 }
 
 sub repo_root {
@@ -82,12 +84,37 @@ sub get_branch {
     return $branch;
 }
 
+sub list_tags {
+    my ($pattern) = @_;
+    my @cmd = qw/git tag -l/;
+    push @cmd, $pattern if $pattern;
+    chomp(my @tags = capture @cmd);
+    return @tags;
+}
+
+# maps rc versions to their major version
+sub get_versions_for_span {
+    my ($since, $until) = @_;
+    return uniq map { /\b(v\d+\.\d+\.(?:rc)?\d+)\b/g }
+        capture (qw/git log --oneline --pretty=%d/, $since.'..'.$until);
+}
+
 sub get_rev { chomp( my $rev = capture(qw/git rev-parse/, $_[0]) ); $rev }
+
+my $fetched_tags = 0;
+sub fetch_remote_tags {#{{{
+    fetch_remote();
+    return if $fetched_tags;
+    if (system(EXIT_ANY, qw/git fetch -q --tags/, $REMOTE)) {
+        exit $EXIT{EXTERNAL_SERVICE_DOWN};
+    }
+    $fetched_tags = 1;
+}#}}}
 
 my $fetched = 0;
 sub fetch_remote {#{{{
     return if $fetched;
-    if (system(EXIT_ANY, qw/git fetch -q/)) {
+    if (system(EXIT_ANY, qw/git fetch -q/, $REMOTE)) {
         exit $EXIT{EXTERNAL_SERVICE_DOWN};
     }
     $fetched = 1;
@@ -113,6 +140,12 @@ sub pull_branch {#{{{
     }
     return;
 }#}}}
+
+sub publish_branch {
+    my ($rev) = @_;
+    my $branch = get_branch($rev // 'HEAD');
+    system qw/git push --set-upstream/, $REMOTE, $branch;
+}
 
 my $HEAD = 'HEAD';
 sub checkout_branch {#{{{
@@ -154,13 +187,16 @@ sub get_tag {#{{{
     return $tag;
 }#}}}
 
+# get all files changed since $until branched from $since except those in $except
+# can be limited to files belonging to @paths
 sub get_deltas {#{{{
-    my ($since, $until, $except) = @_;
+    my ($since, $until, $except, @paths) = @_;
 
-    my @cmd = (qw/git log --name-only --pretty=format:/, $since .'..'. $until);
+    my @cmd = (qw/git log --name-only --pretty=format:/, $since.'..'.$until);
     push @cmd, ('--not' => $except) if $except;
+    push @cmd, ('--', @paths) if @paths;
 
-    my @files = grep {/\S/} capture(@cmd);
+    my @files = uniq grep {/\S/} capture(@cmd);
     chomp @files;
     return @files;
 }#}}}

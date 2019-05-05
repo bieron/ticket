@@ -1,9 +1,11 @@
-project_key:   KEY
-tracker_host:  https://jira.EXAMPLE.com/
-ci_tool_host:  https://bamboo.EXAMPLE.com/
-tracker_class: IssueTracker::Jira
+---
+project_key:   JIR
+tracker_host:  https://jira.example.com/
+ci_tool_host:  https://bamboo.example.com/
+tracker_class: IssueTracker::Jira::Custom
 verbose:       1
 
 # uncomment and fill with correct data
-#user:          ATLASSIAN_LOGIN # if not provided uses shell variable $USER
-#pass:          ATLASSIAN_PASS  # if not provided asks for pass on request and saves session in cookie
+#user:          JIRA_LOGIN # if not provided uses shell variable $USER
+#pass:          JIRA_PASS  # if not provided asks for pass on request and saves session in cookie
+#pass64:        JIRA_PASS  # "hidden" with base64, overrides plaintext `pass`
