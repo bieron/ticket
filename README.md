@@ -20,7 +20,7 @@ You also need to have `curl` and `git` available in your $PATH.
 
 ## Installation
 
-Just run `install` executable.
+Just clone this repo and run `install` executable. Also see "Docker" below for an alternative.
 
 ## Docker
 

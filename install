@@ -1,9 +1,10 @@
 #!/bin/bash
 
-echo Creating ~/.ticket directory for cache
+set -e
+
+echo Creating ~/.ticket directory for cache...
 [ -d ~/.ticket ] || mkdir ~/.ticket -m 700
-ERR=$?
-[ 0 != $ERR ] && exit $ERR
+echo Done.
 
 DIR=`dirname $0`
 cd $DIR
@@ -19,21 +20,19 @@ echo
 
 echo Installing perl dependencies...
 PERL5LIB= cpanm -n --installdeps . -l .
-ERR=$?
-[ 0 != $ERR ] && exit $ERR
 echo Done.
 
 echo
-echo Checking git and curl.
-which curl >/dev/null || exit $!
-which git  >/dev/null || exit $!
-echo Done.
+echo Checking git and curl...
+which curl >/dev/null
+which git  >/dev/null
+echo All done.
 
 echo
-echo 'Add following line to ~/.bashrc or ~/.bash_login or you know best:'
-echo 'export PATH=$PATH:'$DIR/scripts
+echo 'Add following line to ~/.bashrc or ~/.bash_login or you know best where:'
+echo 'export PATH=$PATH:'`pwd`/scripts
 if [ ! -f ticket.conf ]; then
     echo """
 Optional, but recommended:
-Update $DIR/ticket.conf with your JIRA username, password and component (team_letter)"""
+Update `pwd`/ticket.conf with your JIRA username and password"""
 fi
