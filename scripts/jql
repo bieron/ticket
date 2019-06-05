@@ -17,8 +17,9 @@ my $rtfm = not GetOptions(
     'l|link|url'    => \$O{url},
     'v|verbose'     => sub { Ticket::session_cfg(verbose => 1) },
     'format=s'      => \$O{format},
+    'c|count'       => \$O{count},
 );
-if ($rtfm || ! @ARGV) {
+if (!$O{help} && ($rtfm || ! @ARGV)) {
     $O{help} = 1;
 }
 if ($O{help}) {
@@ -35,11 +36,17 @@ if ($O{format}) {
 my $tracker = Ticket::tracker;
 my @tickets = $tracker->search(query => (join ' ', @ARGV), fields => $O{field});
 
+if ($O{count}) {
+    say scalar @tickets;
+    exit;
+}
+
 if ($O{url}) {
     $_->{key} = $tracker->issue_url($_->{key}) for @tickets;
 }
 
 Ticket::ticket_out(\@tickets, @{$O{field}});
+exit ! @tickets;
 __END__
 =pod
 
@@ -49,7 +56,7 @@ jql - shell interface to Jira issue search
 
 =head1 SYNOPSIS
 
-jql [-f FIELD...] [-l] JQL_QUERY [--format FORMAT]
+jql [-f FIELD...] [-l] JQL_QUERY [--format FORMAT] [-c]
 
 =head1 DESCRIPTION
 
@@ -72,6 +79,9 @@ When connecting to Jira, uses credentials stored in ~/.jirarc
 
 --format FORMAT
    Specify different FORMAT, currently JSON is the only supported alternative.
+
+-c, --count
+   Only return the number of matching issues.
 
 =head1 EXAMPLES
 
