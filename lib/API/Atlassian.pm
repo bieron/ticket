@@ -353,16 +353,16 @@ sub create_version {
         json   => {
             archived => \0,
             released => \0,
-            project  => $project_key,
             %params,
         },
     )->{id};
 }
 
 sub get_versions {
+    my ($project) = @_;
     return request_response(
         method => 'GET',
-        url    => $tracker_url .'project/'. $project_key .'/versions'
+        url    => $tracker_url .'project/'. $project .'/versions'
     );
 }
 

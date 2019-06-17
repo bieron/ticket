@@ -28,6 +28,14 @@ sub processor {#{{{
         comment => \&API::Atlassian::comment_issue,
         (map {$_ => \&perform_transition} qw/status workflow action/),
         file => \&API::Atlassian::attach_file_to_issue,
+        fixVersions => sub {
+            my ($key, @versions) = @_;
+            my ($project) = split '-', $key;
+            assert_version($project, $_) for @versions;
+            API::Atlassian::set_issue_fields($key, {fields => {
+                fixVersions => API::Atlassian::in_complex_list(@versions)
+            }});
+        },
     );
     return wantarray ? %processor : \%processor;
 }#}}}
@@ -37,10 +45,6 @@ sub composer {#{{{
         #parent => sub { {key => $_[0]} }, #JIRA REST API doesn't support updating sub-task parent
         (map {$_ => \&API::Atlassian::in_complex} qw/status priority resolution issuetype assignee reporter/),
         (map {$_ => \&API::Atlassian::in_complex_list} qw/components/),
-        fixVersions => sub {
-            assert_version($_) for @_;
-            API::Atlassian::in_complex_list(@_);
-        },
         labels => sub { [split ',', $_[0]] },
     );
     return wantarray ? %in : \%in;
@@ -300,22 +304,22 @@ sub issue_url {#{{{
 
 my %version_name_2_id;
 sub assert_version {#{{{
-    my ($name) = _remove_self(@_);
+    my ($project, $name) = _remove_self(@_);
 
-    if (exists $version_name_2_id{ $name }) {
-        return $version_name_2_id{ $name }
+    if (exists $version_name_2_id{ $project }{ $name }) {
+        return $version_name_2_id{ $project }{ $name }
     }
 
-    for (@{ API::Atlassian::get_versions() }) {
+    for (@{ API::Atlassian::get_versions($project) }) {
         if ($_->{name} eq $name) {
             #version already exists
-            return $version_name_2_id{ $name } = $_->{id};
+            return $version_name_2_id{ $project }{ $name } = $_->{id};
         }
     }
 
-    my $id = API::Atlassian::create_version(name => $name);
-    verbose "Created version '$name'";
-    return $version_name_2_id{ $name } = $id;
+    my $id = API::Atlassian::create_version(project => $project, name => $name);
+    verbose "Created version '$name' in project $project";
+    return $version_name_2_id{ $project }{ $name } = $id;
 }#}}}
 
 1;
