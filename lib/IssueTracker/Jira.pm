@@ -29,11 +29,12 @@ sub processor {#{{{
         (map {$_ => \&perform_transition} qw/status workflow action/),
         file => \&API::Atlassian::attach_file_to_issue,
         fixVersions => sub {
-            my ($key, @versions) = @_;
+            my ($key, $versions_csv) = @_;
             my ($project) = split '-', $key;
+            my @versions = split ',', $versions_csv;
             assert_version($project, $_) for @versions;
             API::Atlassian::set_issue_fields($key, {fields => {
-                fixVersions => API::Atlassian::in_complex_list(@versions)
+                fixVersions => [map {API::Atlassian::in_complex($_) }@versions]
             }});
         },
     );
