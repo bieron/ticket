@@ -1,0 +1,51 @@
+#!/usr/bin/env perl
+use strict; use warnings;
+use FindBin;
+use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
+use API::Slack;
+use Getopt::Long;
+use Ticket qw/parse_ticket/;
+
+my %O;
+my $rtfm = not GetOptions(
+    'h|help+'   => \$O{help},
+    'k|keys=s@' => \$O{keys},
+);
+if (!$O{help} && ($rtfm || @ARGV < 1)) {
+    $O{help} = 1;
+}
+
+sub rtfm { print "usage:\nslack CHANNEL MESSAGE...\n"; exit $_[0] }
+
+if ($O{help}) {
+    # require Pod::Usage;
+    # Pod::Usage::pod2usage({-verbose => $O{help}-1, -exitval => $rtfm});
+    rtfm($O{help});
+}
+
+my ($channel, @msg) = @ARGV;
+
+if (! @msg) {
+    if (-p STDIN) {
+        # do not bother recipient with partial messages
+        # slurp and send just one message
+        @msg = <STDIN>;
+    } else {
+        rtfm(1);
+    }
+}
+
+my $msg = join ' ', @msg;
+exit 1 unless $msg;
+
+my %opts;
+my @keys = map { parse_ticket($_) } map {split ','} @{$O{keys}};
+if (@keys) {
+    local $" = ',';
+    my $t = Ticket::tracker;
+    $opts{attachments} = [map {
+        {text => $_->{summary}, title => $t->issue_url($_->{key})}
+    } $t->search(query => "KEY IN (@keys)", fields => [qw/key summary/])];
+}
+
+API::Slack::chat($channel, $msg, %opts);

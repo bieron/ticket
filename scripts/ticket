@@ -5,7 +5,7 @@ use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
 use Getopt::Long qw/:config bundling/;
 use List::MoreUtils qw/any none/;
 use 5.010;
-use Ticket qw/cfg session_cfg ticket_out/;
+use Ticket qw/cfg session_cfg ticket_out parse_ticket/;
 use API::Git;#}}}
 
 my (%O, @keys); #{{{ handle input
@@ -22,13 +22,9 @@ my $rtfm = not GetOptions(
     'format=s'      => \$O{format},
 );
 
-my ($ticket_pattern, $project_key) = cfg(qw/ticket_pattern project_key/);
 for (@ARGV) {
-    if (/^$ticket_pattern$/) {
-        push @keys, $_;
-    } elsif (/^\d+$/) {
-        #let user skip project name
-        push @keys, $project_key .'-'. $_;
+    if (my $key = parse_ticket($_)) {
+        push @keys, $key;
     } else {
         #treat argument as field and let inner code break if invalid
         push @{ $O{field} }, $_;

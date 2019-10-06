@@ -13,7 +13,7 @@ use Try::Tiny;
 use YAML::Syck;
 use experimental qw/smartmatch/;
 use JSON::XS;
-our @EXPORT_OK = qw/cfg session_cfg ticket_out err verbose assert_branch build_branch get_issuekeys %EXIT/;
+our @EXPORT_OK = qw/cfg session_cfg ticket_out parse_ticket err verbose assert_branch build_branch get_issuekeys %EXIT/;
 
 my %CFG;
 
@@ -223,6 +223,18 @@ sub get_issuekeys {
     croak 'No ticket could be determined.' unless @keys;
 
     return @keys;
+}
+
+my ($ticket_pattern, $project_key) = cfg(qw/ticket_pattern project_key/);
+sub parse_ticket {
+    local $_ = $_[0];
+    if (/^$ticket_pattern$/) {
+        return uc;
+    } elsif (/^\d+$/) {
+        #let user skip project name
+        return $project_key .'-'. $_;
+    }
+    return ();
 }
 
 sub manipulate_ticket {
