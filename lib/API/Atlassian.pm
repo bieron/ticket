@@ -44,7 +44,7 @@ my $HTTP_INTERNAL_ERROR = 500;
 my ($ci_tool_url, $tracker_url, $project_key) = cfg(qw/ci_tool_host tracker_host project_key/);
 $tracker_url .= 'rest/api/2/';
 my $issue_url = $tracker_url . 'issue/';
-my $ci_result_url = $ci_tool_url . 'rest/api/latest/result/';
+my $ci_result_url = $ci_tool_url ? ($ci_tool_url . 'rest/api/latest/result/') : undef;
 
 sub attach_file_to_issue {
     my ($key, $attachment_path) = @_;
@@ -127,6 +127,13 @@ sub _curl {
 }
 
 ### bamboo ######
+sub enable_plan {
+    my ($plan) = @_;
+    return request_response(
+        url => $ci_tool_url .'rest/api/latest/plan/'. $plan .'/enable',
+        method => 'POST',
+    );
+}
 
 sub get_plan_fields {
     my ($key, @fields) = @_;
@@ -377,6 +384,15 @@ sub modify_version_by_id {
 }
 
 ### bitbucket
+
+sub get_reviews {
+    my %params = @_;
+
+    return request_response(
+        url => cfg('repo_host') .'rest/api/latest/projects/'.$project_key.'/repos/'.cfg('repo_project').'/pull-requests',
+        query => \%params,
+    )->{values};
+}
 
 sub create_review {
     my ($repo_url, $title, $desc, $refs, $users) = @_;

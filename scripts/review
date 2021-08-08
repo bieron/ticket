@@ -1,0 +1,151 @@
+#!/usr/bin/env perl
+use strict; use warnings;
+use feature qw/say/;
+use FindBin;
+use Getopt::Long qw/:config bundling/;
+use Try::Tiny;
+use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
+use Ticket qw/err cfg/;
+use API::Atlassian;
+use API::Git;
+use API::Slack;
+use experimental qw/smartmatch/;
+
+my @valid_targets = qw|devel staging master|;
+my %O = (
+    target => $valid_targets[0],
+    jira => 1,
+    slack => 1,
+);
+my $rtfm = not GetOptions(
+    'h|help'     => \$O{help},
+
+    't|target=s' => \$O{target},
+    'b|branch=s' => \$O{branch},
+    'd|desc=s'   => \$O{desc},
+    'k|keys=s'   => \$O{keys},
+    'push!'      => \$O{push},
+    'v|verbose'  => sub { Ticket::session_cfg(verbose => 1) },
+    'r|reviewer=s@' => \$O{reviewers},
+    'title=s'       => \$O{title},
+    'jira!'         => \$O{jira},
+    'slack!'     => \$O{slack},
+);
+if ($O{help}) {
+    require Pod::Usage;
+    Pod::Usage::pod2usage({-verbose => 1, -exitval => $rtfm});
+}
+
+$O{target} =~ s|^origin/||;
+if (not $O{target} ~~ \@valid_targets) {
+    local $" = ', ';
+    err("Target must be one of: @valid_targets, not: '$O{target}'");
+}
+my $branch = $O{branch} || API::Git::get_current_branch();
+
+my @keys;
+if (! ($O{title} && $O{jira})) {
+    @keys = Ticket::get_issuekeys();
+}
+my $title = $O{title};
+if (! $title) {
+    if (@ARGV) {
+        $title = join ' ', @ARGV;
+    } elsif (@keys == 1) {
+        $title = join ' ', $keys[0], Ticket::manipulate_ticket($keys[0], ['summary'])->{summary};
+    } else {
+        err('Title cannot be empty');
+    }
+}
+
+if ($O{push}) {
+    API::Git::publish_branch($branch);
+}
+
+
+# add review
+my $reviewers = @{ $O{reviewers} // [] } ?
+    $O{reviewers} : [grep {$_ ne $ENV{USER}} @{cfg('repo_peers') // []}];
+
+my $desc = $O{desc};
+if (! $desc) {
+    my $changelog = join "\n", reverse split "\n",
+        `git log --oneline origin/$O{target}..$branch --pretty=format:%s`;
+
+    $desc = (join ' ', @keys) ."\n". $changelog;
+}
+
+
+my $review_url;
+try {
+    my ($host, $project) = cfg(qw/repo_host repo_project/);
+    $review_url = API::Atlassian::create_review(
+        $host .'rest/api/latest/projects/'.$project.'/repos/'.$project.'/pull-requests',
+        $title, $desc,
+        [map {'refs/heads/'. $_} $branch, $O{target}],
+        $reviewers
+    );
+    say $review_url;
+} catch {
+    #TODO warn but not fail if already exist, useful for --jira and --slack
+    warn "Cannot create review for $branch: " . (split "\n", $_)[0,1];
+    exit 1;
+};
+
+if ($O{jira}) {
+    # set state to peer review
+    Ticket->tracker->perform_transition($_, 'select,prog,peer review!') for @keys;
+}
+
+if ($O{slack}) {
+    API::Slack::chat(
+        '#api-internal',
+        API::Slack::format_url($review_url, "Pull request for $branch into $O{target}"),
+        attachments => API::Slack::attachments_from_keys(@keys),
+        link_tickets => 0,
+    );
+}
+__END__
+=pod
+
+=head1 NAME
+
+review - request pull for branch
+
+=head1 OPTIONS
+
+ -h, --help
+   Displays this text. Ignores other options.
+
+ -t, --target master|staging|devel
+   Target branch for the pull request. Defaults to devel.
+
+ -b, --branch BRANCH
+   Branch to request merge for. Defaults to the current one.
+
+ -d, --desc DESCRIPTION
+   Pull request description. If empty, squashes branch's commit messages.
+
+ --push, --no-push
+   Publish branch to remote prior to requesting. False by default.
+
+ -v, --verbose
+   Be more verbose.
+
+ -r, --reviewer USERNAME
+   Include USERNAME as reviewer.
+
+ --title TITLE
+    Pull request title. Defaults to task key + branch name
+
+ --jira, --no-jira
+    Move issues to QA Ready. True by default.
+
+ --slack, --no-slack
+    Publish pull request to slack channel. True by default.
+
+=head1 AUTHOR
+
+bieron@github, feedback welcomed
+
+=cut

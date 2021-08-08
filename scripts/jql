@@ -8,6 +8,9 @@ use Getopt::Long qw/:config bundling/;
 use Ticket;
 #}}}
 
+# FIXME hack to jumpstart cfg in this package context
+Ticket::cfg('format');
+
 my %O = (
     field => [qw/key summary/],
 );
@@ -27,9 +30,6 @@ if ($O{help}) {
     Pod::Usage::pod2usage({-verbose => $O{help}-1, -exitval => $rtfm});
 }
 if ($O{format}) {
-    # FIXME hack to jumpstart cfg in this package context
-    Ticket::cfg('format');
-
     Ticket::session_cfg('format', $O{format});
 }
 

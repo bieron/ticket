@@ -1,0 +1,12 @@
+#!/bin/bash
+
+if [ -z "$2" ]; then
+  >&2 echo usage: $0 VERSION KEY [KEY...]
+  exit 1
+fi
+version=$1
+shift
+
+for key in $@; do 
+    ticket $key comment="verified on $version" status=verified
+done

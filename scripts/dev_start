@@ -65,10 +65,6 @@ else {
 }
 
 API::Git::checkout_branch_assert($branch, $O{upstream});
-
-if ($O{push}) {
-    system(qw/git push --set-upstream/, cfg('remote'), $branch);
-}
 __END__
 
 =pod
@@ -100,8 +96,5 @@ For multiple TICKETS given, the branch is fixpack/TICKET-1_TICKET-2_TICKET-3
 
 -u, --upstream [BRANCH]
     Defines the start point for the new feature branch. Defaults to 'HEAD'
-
--p, --push
-    Push newly created branch to origin
 
 =cut

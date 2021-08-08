@@ -2,20 +2,20 @@
 use strict; use warnings;
 use FindBin;
 use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
-use API::Slack;
 use Getopt::Long;
+use API::Slack;
 use Ticket qw/parse_ticket/;
 
 my %O;
 my $rtfm = not GetOptions(
-    'h|help+'   => \$O{help},
-    'k|keys=s@' => \$O{keys},
+    'h|help+'       => \$O{help},
+    'k|keys=s@'     => \$O{keys},
 );
-if (!$O{help} && ($rtfm || @ARGV < 1)) {
-    $O{help} = 1;
-}
 
-sub rtfm { print "usage:\nslack CHANNEL MESSAGE...\n"; exit $_[0] }
+sub rtfm {
+    print "usage:\nslack CHANNEL MESSAGE... [-k KEYS ...]\n";
+    exit $_[0];
+}
 
 if ($O{help}) {
     # require Pod::Usage;
@@ -39,13 +39,9 @@ my $msg = join ' ', @msg;
 exit 1 unless $msg;
 
 my %opts;
-my @keys = map { parse_ticket($_) } map {split ','} @{$O{keys}};
+my @keys = map { parse_ticket($_) } map {split ',', $_} @{$O{keys}};
 if (@keys) {
-    local $" = ',';
-    my $t = Ticket::tracker;
-    $opts{attachments} = [map {
-        {text => $_->{summary}, title => $t->issue_url($_->{key})}
-    } $t->search(query => "KEY IN (@keys)", fields => [qw/key summary/])];
+    $opts{attachments} = API::Slack::attachments_from_keys(@keys);
 }
 
 API::Slack::chat($channel, $msg, %opts);

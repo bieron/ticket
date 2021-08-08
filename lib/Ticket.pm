@@ -62,7 +62,16 @@ sub _build_config {
     # If either pass or credentials are defined in config, they will be used instead of cookie mechanism
     # but pass takes precedence
     if ($CFG{pass}) {
-        $CFG{credentials} = $CFG{user} .':'. $CFG{pass};
+        $CFG{credentials} = encode_base64($CFG{user} .':'. $CFG{pass});
+    } else {
+        my $key = encode_base64('credentials', '');
+        if (ref $CFG{$key} eq 'HASH') {
+            $CFG{credentials} = $CFG{$key};
+        } elsif (ref $CFG{credentials} eq 'HASH') {
+            for (keys %{$CFG{credentials}}) {
+                $CFG{credentials}{$_} = encode_base64($CFG{credentials}{$_}, '');
+            }
+        }
     }
 
     # These cannot be overwritten
@@ -163,10 +172,10 @@ sub build_branch {
 
     $summary =~ s/&[^;]+;//g;       #strip html entities
     $summary =~ s/['"]//g;          #strip chars that provide no additional meaning
-    $summary =~ s/\W+/_/g;          #replace not alphanumeric with _
+    $summary =~ s/[^\w.,-]+/_/g;    #replace not alphanumeric with _
     $summary = unidecode($summary); #latinize
     $summary =~ s/_{2,}/_/g;        #strip duplicate _
-    $summary =~ s/^_|_$//g;         #strip border _
+    $summary =~ s/^[._]+|[._]+$//g; #strip border _
 
     my $branch = $prefix .'/'. $key .'_'. $summary;
 
@@ -198,22 +207,25 @@ sub get_authorization_data {
     if (ref $credentials) {
         for (keys %$credentials) {
             my $cfg_url = cfg($_);
-            if ($url =~ /^$cfg_url/) {
+            if (defined $cfg_url && $url =~ /^$cfg_url/) {
                 $credentials = $credentials->{$_};
                 last;
             }
         }
     }
     # Ignore cookies if credentials provided
-    return ('-u', $credentials) if $credentials and not ref $credentials;
+    if ($credentials and not ref $credentials) {
+        return ('-H', 'Authorization: Basic '. $credentials);
+    }
 
     my $cookie = _service_cookie_from_url(@_);
 
     if (-r $cookie) {
         return ('-b', $cookie);
-    } else {
-        return ('-u', $credentials, '-c', $cookie);
+    } elsif ($credentials) {
+        return ('-H', 'Authorization: Basic '. $credentials, '-c', $cookie);
     }
+    return ();
 }
 
 sub get_issuekeys {
@@ -271,6 +283,7 @@ sub out {
 }
 sub ticket_out {
     my ($issue, @fields) = @_;
+    binmode(STDOUT, 'encoding(UTF-8)');
 
     if (cfg('format') eq 'json') {
         if ('HASH' eq ref $issue) {
@@ -285,6 +298,11 @@ sub ticket_out {
                 push @issues, \%temp;
             }
             say encode_json(\@issues);
+        }
+        return;
+    } elsif (cfg('format') eq 'csv') {
+        for ('ARRAY' eq ref $issue ? @$issue : $issue) {
+            say join ',', @{$_}{@fields};
         }
         return;
     }

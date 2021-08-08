@@ -1,0 +1,33 @@
+#!/bin/bash
+set -e
+
+keys=$@
+if [ -z "$1" ]; then
+    keys=`ticket -k`
+fi
+echo updating $keys status to QA Ready, fixversion to current version and time remaining to 0
+
+for k in $keys; do
+    s=`ticket $k status fixversion|tail -n2`
+    status=`echo "$s"|head -n1`
+    version=`echo "$s"|tail -n1`
+    case $status in
+        'In Progress') fields="status=Peer Review,Pass,Ready";;
+        'Peer Review') fields="status=Pass,Ready";;
+        'Review Passed') fields="status=Ready";;
+        *) echo $k is in status $status
+    esac
+
+    if [ -z "$version" -o "$version" = '~' ]; then
+        sha=`git log --all --oneline --pretty=%h --grep $k -1`
+        if [ -n "$sha" ]; then
+            version=`git describe --first-parent --tags $sha --abbrev=0|perl -pe 's/^v//; s/-.*//; s/\.0$//'`
+            fields="$fields fixversion=$version"
+        else
+            2>&1 echo cannot determine effective fixversion for $k
+        fi
+    fi
+
+    set -x
+    ticket $k $fields timetracking.remainingEstimate:0
+done

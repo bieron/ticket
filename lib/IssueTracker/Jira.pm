@@ -20,7 +20,7 @@ sub processor {#{{{
         log => \&log_work,
         assignee => sub {
             my ($key, $assignee) = @_;
-            $assignee = cfg('jira_username')//cfg('user') if $assignee eq '@';
+            $assignee = cfg('tracker_user')//cfg('user') if $assignee eq '@';
             # unassign if $assignee is false
             undef $assignee unless $assignee;
             API::Atlassian::assign_to_issue($key, $assignee);
@@ -53,8 +53,9 @@ sub composer {#{{{
 
 sub decomposer {#{{{
     my %out = (
+        (map {$_ => sub { API::Atlassian::out_complex($_[0]) // $_[0]{displayName} } } qw/assignee reporter/),
         parent => sub { join ' ', $_[0]{key}, $_[0]{fields}{summary} },
-        (map {$_ => \&API::Atlassian::out_complex} qw/status priority resolution issuetype assignee reporter/),
+        (map {$_ => \&API::Atlassian::out_complex} qw/status priority resolution issuetype /),
         (map {$_ => \&API::Atlassian::out_complex_list} qw/components fixVersions/),
         issuelinks => sub {
             my @relations;

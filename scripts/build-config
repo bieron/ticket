@@ -1,0 +1,34 @@
+#!/usr/bin/env perl
+use strict; use warnings;
+use feature 'say';
+use FindBin;
+use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
+use YAML::Syck qw/LoadFile DumpFile/;
+use Term::ReadKey;
+use MIME::Base64;
+
+my $ticket_path = $FindBin::RealBin .'/../ticket.conf';
+
+my %conf = %{ LoadFile($ticket_path .'.example') };
+
+my %credentials;
+
+for my $host (qw/tracker_host ci_tool_host repo_host/) {
+    ReadMode 'normal';
+    print "Username for $conf{$host}: ";
+    my $user = ReadLine 0;
+    chomp $user;
+
+    ReadMode 'noecho';
+    print "Password for $host: ";
+    my $pass = ReadLine 0;
+    chomp $pass;
+    say "\n";
+    $credentials{$host} = encode_base64($user . ':' . $pass);
+}
+$conf{encode_base64('credentials')} = \%credentials;
+ReadMode 'normal';
+
+open my $f, '>', $ticket_path;
+DumpFile($f, \%conf);
+say "Saved new $ticket_path";

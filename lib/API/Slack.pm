@@ -20,6 +20,11 @@ sub post {
     croak $response if $response ne 'ok';
 }
 
+sub format_url {
+    my ($url, $name) = @_;
+    return '<'. $url .'|'. $name .'>';
+}
+
 sub chat {
     my ($channel, $msg, %opts) = @_;
 
@@ -28,12 +33,27 @@ sub chat {
 
     $msg = Term::ANSIColor::colorstrip($msg);
 
-    # replace every SEM with its link
-    # if it's already a link, just format it to fold it to SEM
-    my $url = $tracker->issue_url('');
-    $msg =~ s/(?:$url)?$ticket_regex/'<'.$url.$1."|$1>"/ge;
+    if ($opts{link_tickets} // 1) {
+        # replace every ticket with its link
+        # if it's already a link, just format it to fold it to ticket
+        my $url = $tracker->issue_url('');
+        $msg =~ s/(?:$url)?$ticket_regex/format_url($url.$1, $1)/ge;
+    }
 
     post(channel => $channel, text => $msg, link_names => 1, %opts);
+}
+
+sub attachments_from_keys {
+    my (@keys) = @_;
+
+    local $" = ',';
+    my $t = Ticket::tracker;
+    return [map {
+        {
+            text => $_->{summary},
+            title => format_url($t->issue_url($_->{key}), $_->{key})
+        }
+    } $t->search(query => "KEY IN (@keys)", fields => [qw/key summary/])];
 }
 
 1;

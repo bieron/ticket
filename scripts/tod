@@ -1,0 +1,12 @@
+#!/bin/bash
+
+branch=${1:-bamboo/jb}
+
+set -x
+if ! git push origin HEAD:$branch -f 2>/dev/null; then
+    git push origin :$branch 2>/dev/null
+    git push origin HEAD:$branch
+fi
+
+enable_plan
+plan HEAD

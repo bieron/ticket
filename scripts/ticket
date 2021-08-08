@@ -19,7 +19,7 @@ my $rtfm = not GetOptions(
 
     'k|print-key'   => \$O{print_ticket},
     'v|verbose'     => sub { Ticket::session_cfg(verbose => 1) },
-    'format=s'      => \$O{format},
+    'f|format=s'      => \$O{format},
 );
 
 for (@ARGV) {

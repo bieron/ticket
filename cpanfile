@@ -11,8 +11,4 @@ requires qw/ Try::Tiny           /;
 requires qw/ YAML::Syck          /;
 requires qw/ autodie             /;
 requires qw/ experimental        /;
-
-on 'test' => sub {
-    requires qw/Test::Deep        0.109    /;
-    requires qw/Test::MockModule  0.05     /;
-};
+requires qw/ Term::ReadKey       /;
