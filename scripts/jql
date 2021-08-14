@@ -21,7 +21,12 @@ my $rtfm = not GetOptions(
     'v|verbose'     => sub { Ticket::session_cfg(verbose => 1) },
     'format=s'      => \$O{format},
     'c|count'       => \$O{count},
+    'g|groupby=s'   => \$O{groupby},
 );
+if ($O{groupby}) {
+    warn "Overriding field opt with groupby" if @{ $O{field} };
+    $O{field} = ['key', $O{groupby}];
+}
 if (!$O{help} && ($rtfm || ! @ARGV)) {
     $O{help} = 1;
 }
@@ -38,6 +43,17 @@ my @tickets = $tracker->search(query => (join ' ', @ARGV), fields => $O{field});
 
 if ($O{count}) {
     say scalar @tickets;
+    exit;
+}
+if ($O{groupby}) {
+    my $field = $O{groupby};
+    my %count;
+    for (@tickets) {
+        $count{$_->{$field}}++;
+    }
+    for (sort { $count{$b} <=> $count{$a} } keys %count) {
+        say "$count{$_}\t$_";
+    }
     exit;
 }
 

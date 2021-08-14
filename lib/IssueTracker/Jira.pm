@@ -23,7 +23,7 @@ sub processor {#{{{
             $assignee = cfg('tracker_user')//cfg('user') if $assignee eq '@';
             # unassign if $assignee is false
             undef $assignee unless $assignee;
-            API::Atlassian::assign_to_issue($key, $assignee);
+            API::Atlassian::assign_to_issue($key, {name => $assignee});
         },
         comment => \&API::Atlassian::comment_issue,
         (map {$_ => \&perform_transition} qw/status workflow action/),

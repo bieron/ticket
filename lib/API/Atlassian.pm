@@ -252,12 +252,13 @@ sub set_issue_fields {
 }
 
 sub assign_to_issue {
-    my ($key, $assignee) = @_;
+    my ($key, $json) = @_;
 
     return request_response(
         method => 'PUT',
         url => $issue_url . $key .'/assignee',
-        json => {name => $assignee},
+        # {name} or {accountId}
+        json => $json
     );
 }
 

@@ -101,8 +101,10 @@ sub tracker {
     return $tracker if defined $tracker;
 
     my $class = cfg('tracker_class');
-    if (! try_load_class($class)) {
+    my ($res, $err) = try_load_class($class);
+    if ($err) {
         my $default_class = 'IssueTracker::Jira';
+        warn $err;
         warn "Cannot load class $class, defaulting to $default_class";
         load_class($class = $default_class);
     }
@@ -153,7 +155,7 @@ sub assert_branch {
         $branch = $custom_branch || build_branch($issue);
         my $desc = sprintf "*branch*:{code}%s{code}\n%s", $branch, $issue->{description} // '';
         #tracker->update($key, description => {'=' => $desc});
-        verbose "Prepended $key description with $branch";
+        verbose("Prepended $key description with $branch");
     } else {
         croak "no branch in $key.";
     }
@@ -197,7 +199,7 @@ sub clear_authorization_data {
     # Ignore cookies if credentials provided
     return if cfg('credentials');
 
-    verbose 'Clearing cookie jar. You will have to provide password next time to create another.';
+    verbose('Clearing cookie jar. You will have to provide password next time to create another.');
     unlink _service_cookie_from_url(@_);
 }
 sub get_authorization_data {
@@ -285,7 +287,9 @@ sub ticket_out {
     my ($issue, @fields) = @_;
     binmode(STDOUT, 'encoding(UTF-8)');
 
-    if (cfg('format') eq 'json') {
+    my $fmt = cfg('format');
+
+    if ($fmt eq 'json' or $fmt eq 'ndjson') {
         if ('HASH' eq ref $issue) {
             my %temp;
             @temp{@fields} = @{$issue}{@fields};
@@ -297,10 +301,14 @@ sub ticket_out {
                 @temp{@fields} = @{$_}{@fields};
                 push @issues, \%temp;
             }
-            say encode_json(\@issues);
+            if ($fmt eq 'json') {
+                say encode_json(\@issues);
+            } else {
+                say encode_json($_) for @issues;
+            }
         }
         return;
-    } elsif (cfg('format') eq 'csv') {
+    } elsif ($fmt eq 'csv') {
         for ('ARRAY' eq ref $issue ? @$issue : $issue) {
             say join ',', @{$_}{@fields};
         }
