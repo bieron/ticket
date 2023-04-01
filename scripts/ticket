@@ -14,7 +14,6 @@ my $rtfm = not GetOptions(
 
     'b|get-branch'  => \$O{get_branch},
     'c|checkout'    => \$O{checkout},
-    's|set-branch'  => \$O{set_branch},
     'u|upstream:s'  => \$O{upstream},
 
     'k|print-key'   => \$O{print_ticket},
@@ -51,8 +50,8 @@ if ($O{format}) {
 }
 
 for my $key (@keys) { #{{{ process tickets
-    if (any {defined} @O{qw/checkout get_branch set_branch/}) {
-        my $branch = Ticket::assert_branch($key, $O{set_branch});
+    if (any {defined} @O{qw/checkout get_branch/}) {
+        my $branch = Ticket::build_branch($key);
 
         if ($O{checkout}) {
             API::Git::checkout_branch_assert($branch, $O{upstream});
@@ -90,7 +89,7 @@ If no TICKET is provided, looks for it in current branch name.
 If it's not found there, looks for it in last non-merge commit message.
 If it's not found there, exits with error.
 
-Options --checkout, --set-branch (without parameters) and --print-branch
+Options --checkout and --print-branch
 build the branch name by concatenating issue type, key and summary,
 e.g. bugfix/KEY-1234_Issue_summary
 
@@ -112,11 +111,6 @@ When connecting to Jira, uses credentials stored in ~/.jirarc
 
 -k, --print-key
    Prints keys found in branch or last commit. Or prints given TICKETs, for coherence sake.
-
--s, --set-branch
-   Prepends issue description with built branch but only if there was none.
-   Doesn't change description if a branch is already included in issue description.
-   CAUTION: Might not recognize some branch patterns.
 
 -u, --upstream START_POINT
    Implies --checkout. Makes the newly created (by --checkout) branch stem from START_POINT.

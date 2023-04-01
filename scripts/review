@@ -9,9 +9,8 @@ use Ticket qw/err cfg/;
 use API::Atlassian;
 use API::Git;
 use API::Slack;
-use experimental qw/smartmatch/;
 
-my @valid_targets = qw|devel staging master|;
+my @valid_targets = qw|master releases/2.x releases/3.x|;
 my %O = (
     target => $valid_targets[0],
     jira => 1,
@@ -94,7 +93,7 @@ try {
 
 if ($O{jira}) {
     # set state to peer review
-    Ticket->tracker->perform_transition($_, 'select,prog,peer review!') for @keys;
+    Ticket->tracker->perform_transition($_, 'prog,review!') for @keys;
 }
 
 if ($O{slack}) {

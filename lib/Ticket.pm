@@ -6,14 +6,13 @@ use Class::Load qw/try_load_class load_class/;
 use Cwd;
 use Data::Dump 'pp';
 use Exporter 'import';
-use List::MoreUtils qw/firstval/;
+use List::MoreUtils qw/any firstval/;
 use MIME::Base64;
 use Text::Unidecode;
 use Try::Tiny;
 use YAML::Syck;
-use experimental qw/smartmatch/;
 use JSON::XS;
-our @EXPORT_OK = qw/cfg session_cfg ticket_out parse_ticket err verbose assert_branch build_branch get_issuekeys %EXIT/;
+our @EXPORT_OK = qw/cfg session_cfg ticket_out parse_ticket err verbose build_branch get_issuekeys %EXIT/;
 
 my %CFG;
 
@@ -67,6 +66,7 @@ sub _build_config {
         my $key = encode_base64('credentials', '');
         if (ref $CFG{$key} eq 'HASH') {
             $CFG{credentials} = $CFG{$key};
+            delete $CFG{$key};
         } elsif (ref $CFG{credentials} eq 'HASH') {
             for (keys %{$CFG{credentials}}) {
                 $CFG{credentials}{$_} = encode_base64($CFG{credentials}{$_}, '');
@@ -120,52 +120,15 @@ sub _dot_dir {
     return $dot_dir;
 }
 
-my $issue_matches_branch;
-# expects to be given an issue HASH, from IssueTracker::fetch or ::search
-sub has_branch {
-    my ($issue) = @_;
-    croak "Given issue hadn't had its description field fetched!" unless exists $issue->{description};
-    return 0 unless defined $issue->{description};
-
-    if (not $issue_matches_branch) {
-        my $branch_pattern = cfg('branch_pattern');
-        $issue_matches_branch = qr/
-            branch [:\W]*? (?:
-                {code} \s* $branch_pattern \s* {code}
-                | \s* $branch_pattern \s*
-            )
-        /ix;
-        $issue_matches_branch = qr/(?:
-            {code} \W*? $issue_matches_branch \W*? {code}
-            | $issue_matches_branch
-        )/x;
-    }
-
-    return firstval {$_} $issue->{description} =~ $issue_matches_branch;
-}
-
-sub assert_branch {
-    my ($key, $set_if_none, $custom_branch) = @_;
-
-    my $branch;
-    my $issue = tracker->fetch($key, qw/description issuetype summary/);
-    if ($branch = has_branch($issue)) {
-        return $branch;
-    } elsif ($set_if_none) {
-        $branch = $custom_branch || build_branch($issue);
-        my $desc = sprintf "*branch*:{code}%s{code}\n%s", $branch, $issue->{description} // '';
-        #tracker->update($key, description => {'=' => $desc});
-        verbose("Prepended $key description with $branch");
-    } else {
-        croak "no branch in $key.";
-    }
-    return $branch;
-}
 sub build_branch {
-    my ($issue_fields) = @_;
-    my ($type, $key, $summary) = @{ $issue_fields }{qw/issuetype key summary/};
+    my ($key, $issue_fields) = @_;
+    if (!$issue_fields) {
+      $issue_fields = tracker->fetch($key, qw/issuetype summary/);
+    }
+    my ($type, $summary) = @{ $issue_fields }{qw/issuetype summary/};
 
     my $prefix = {
+        bug => 'bugs',
         'Sub-task'       => 'task',
         'Tech Story'     => 'technical',
         'Technical Task' => 'technical',
@@ -318,7 +281,7 @@ sub ticket_out {
     for my $is ('ARRAY' eq ref $issue ? @$issue : $issue) {
         if (@fields < 2) {
             say out($is->{$fields[0] // 'key'} // '');
-        } elsif (@fields == 2 and 'key' ~~ \@fields) {
+        } elsif (@fields == 2 and any {'key' eq $_} @fields) {
             say $is->{key} ."\t"
                 . (out($is->{$fields[int('key' eq $fields[0])]}) // '');
         } else {

@@ -22,7 +22,10 @@ our @EXPORT_OK = qw/
     create_issue
     set_issue_fields
     get_issue_fields
+
+    get_assignees
     assign_to_issue
+
     get_issue_transitions
     transition_issue
     link_issues
@@ -34,6 +37,8 @@ our @EXPORT_OK = qw/
     create_version
     get_versions
     modify_version_by_id
+
+    get_project_schema
 /;
 
 
@@ -42,8 +47,9 @@ my $HTTP_UNAUTHORIZED = 401;
 my $HTTP_INTERNAL_ERROR = 500;
 
 my ($ci_tool_url, $tracker_url, $project_key) = cfg(qw/ci_tool_host tracker_host project_key/);
-$tracker_url .= 'rest/api/2/';
-my $issue_url = $tracker_url . 'issue/';
+my $tracker_url2 = $tracker_url . 'rest/api/2/';
+my $tracker_url3 = $tracker_url . 'rest/api/3/';
+my $issue_url = $tracker_url2 . 'issue/';
 my $ci_result_url = $ci_tool_url ? ($ci_tool_url . 'rest/api/latest/result/') : undef;
 
 sub attach_file_to_issue {
@@ -251,6 +257,14 @@ sub set_issue_fields {
     );
 }
 
+sub get_assignees {
+  my ($query, $project) = @_;
+  $project ||= cfg('project_key');
+  return [grep {$_->{active}} @{request_response(
+    url => "$tracker_url3/user/assignable/search?project=$project&query=$query"
+  )}];
+}
+
 sub assign_to_issue {
     my ($key, $json) = @_;
 
@@ -260,6 +274,18 @@ sub assign_to_issue {
         # {name} or {accountId}
         json => $json
     );
+}
+
+sub get_project_schema {
+  my ($project) = @_;
+  $project ||= cfg('project_key');
+
+  my $schema = request_response(url => "$tracker_url3/project/$project");
+  return {
+    components => $schema->{components},
+    issueTypes => $schema->{issueTypes},
+    versions => [grep {!$_->{archived} && !$_->{released}} @{$schema->{versions}}],
+  };
 }
 
 sub get_issue_transitions {
@@ -290,7 +316,7 @@ sub link_issues {# {{{
 
     return request_response(
         method => 'POST',
-        url => $tracker_url . 'issueLink',
+        url => $tracker_url2 . 'issueLink',
         json => {
             type => {name => $relation},
             inwardIssue  => {key => $a},
@@ -330,7 +356,7 @@ sub search_for_issues {
 #   jql startAt limit fields
     return request_response(
         method => 'POST',
-        url    => $tracker_url . 'search/',
+        url    => $tracker_url2 . 'search/',
         json   => \%params,
     )->{issues};
 }
@@ -338,7 +364,7 @@ sub search_for_issues {
 sub get_issue_fields_definitions {
     my ($key) = @_;
 
-    return request_response(url => $tracker_url .'issue/'. $key);
+    return request_response(url => $tracker_url2 .'issue/'. $key);
 }
 
 ### jira user
@@ -346,7 +372,7 @@ sub get_issue_fields_definitions {
 sub get_user {
     return request_response(
         method => 'GET',
-        url    => $tracker_url .'user?username='. $_[0]
+        url    => $tracker_url2 .'user?username='. $_[0]
     );
 }
 
@@ -357,7 +383,7 @@ sub create_version {
 
     return request_response(
         method => 'POST',
-        url    => $tracker_url . 'version',
+        url    => $tracker_url2 . 'version',
         json   => {
             archived => \0,
             released => \0,
@@ -370,7 +396,7 @@ sub get_versions {
     my ($project) = @_;
     return request_response(
         method => 'GET',
-        url    => $tracker_url .'project/'. $project .'/versions'
+        url    => $tracker_url2 .'project/'. $project .'/versions'
     );
 }
 
@@ -378,7 +404,7 @@ sub modify_version_by_id {
     my ($id, %params) = @_;
 
     return request_response(
-        url => $tracker_url .'version/'. $id,
+        url => $tracker_url2 .'version/'. $id,
         method => 'PUT',
         json => \%params,
     );

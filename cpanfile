@@ -10,5 +10,4 @@ requires qw/ Text::Unidecode     /;
 requires qw/ Try::Tiny           /;
 requires qw/ YAML::Syck          /;
 requires qw/ autodie             /;
-requires qw/ experimental        /;
 requires qw/ Term::ReadKey       /;

@@ -1,7 +1,9 @@
 #!/usr/bin/env perl
 use strict; use warnings;#{{{
 use FindBin;
+use feature qw/say/;
 use lib "$FindBin::RealBin/../lib/perl5", "$FindBin::RealBin/../lib";
+use Term::ReadKey;
 use Getopt::Long qw/:config bundling/;
 use Try::Tiny;
 use IPC::System::Simple qw/system/;
@@ -12,56 +14,59 @@ my $project_key = cfg('project_key');
 local $" = ',';
 # process input
 my %O = (
-    workflow => 'select,start!',
+  workflow => 'ready,start!',
 );
 my $rtfm = not GetOptions(
-    'h|help+'      => \$O{help},
+  'h|help+'      => \$O{help},
 
-    'u|upstream=s' => \$O{upstream},
-    'w|workflow:s' => \$O{workflow},
-    'p|push'       => \$O{push},
+  'y|yes'        => \$O{yes},
+  'u|upstream=s' => \$O{upstream},
+  'w|workflow:s' => \$O{workflow},
+  'p|push'       => \$O{push},
 );
 my @keys = map { m/(\w+-\d+)/ ? $1 : (m/(\d+)/ ? $project_key.'-'.$1 : ()) } @ARGV;
 
 if ($rtfm || $O{help}) {
-    require Pod::Usage;
-    Pod::Usage::pod2usage({-verbose => $O{help}-1, -exitval => $rtfm});
+  require Pod::Usage;
+  Pod::Usage::pod2usage({-verbose => $O{help}-1, -exitval => $rtfm});
 }
 if (not @keys) {
-    err "At least one $project_key is required";
+  err "At least one $project_key is required";
 }
 
 my $fields_to_set = ['assignee=@', 'status=' . $O{workflow}];
 my $branch;
 
+sub confirm {
+  if (!$O{yes}) {
+    my ($branch) = @_;
+    say "Proceed with $branch? [Yn]";
+    my $choice = ReadKey;
+    chomp $choice;
+    if ($choice && lc $choice ne 'y') {
+      say "Bye.";
+      exit 0;
+    }
+  }
+
+}
+
 if ($#keys == 0) {
-    $branch = Ticket::assert_branch($keys[0], 1);
-    try {
-        Ticket::manipulate_ticket($keys[0], $fields_to_set);
-    } catch {
-        use Data::Dump 'pp';
-        warn pp $_;
-    };
+  $branch = Ticket::build_branch($keys[0]);
+  confirm($branch);
+  try {
+    Ticket::manipulate_ticket($keys[0], $fields_to_set);
+  } catch {
+    use Data::Dump 'pp';
+    warn pp $_;
+  };
 }
 else {
-    my @issues = Ticket::tracker->search(
-        query => "key IN (@keys)",
-        fields => [qw/key description/],
-    );
-
-    my @keys_with_branches = map {$_->{key}} grep {Ticket::has_branch($_)} @issues;
-    if (@keys_with_branches) {
-        err "Following tickets already have branches in theirs descriptions: @keys_with_branches. Cannot continue";
-    }
-
-    $branch = 'fixpack/' . join '_', @keys;
-    for (@keys) {
-        Ticket::assert_branch($_, 1, $branch);
-        eval {
-            # changing status can fail, no problem
-            Ticket::manipulate_ticket($_, $fields_to_set);
-        };
-    }
+  $branch = 'fixpack/' . join '_', @keys;
+  confirm($branch);
+  for (@keys) {
+    Ticket::manipulate_ticket($_, $fields_to_set);
+  }
 }
 
 API::Git::checkout_branch_assert($branch, $O{upstream});

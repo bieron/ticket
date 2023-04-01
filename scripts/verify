@@ -8,5 +8,5 @@ version=$1
 shift
 
 for key in $@; do 
-    ticket $key comment="verified on $version" status=verified
+    ticket $key comment="verified on $version" status=done
 done

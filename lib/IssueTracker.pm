@@ -1,6 +1,7 @@
 package IssueTracker;
 use strict; use warnings;
 use Role::Tiny;
+use Ticket 'cfg';
 
 requires $_ for qw/
     fetch update create search
@@ -14,5 +15,14 @@ sub _remove_self {#{{{
     }
     return @_;
 }#}}}
+
+sub resolve_user {
+  my ($self, $user) = @_;
+  if ($user eq '@') {
+    $user = cfg('tracker_account_id');
+    die 'Cannot resolve "@" when conf is missing "tracker_account_id"' unless $user;
+    return $user;
+  }
+}
 
 1;
